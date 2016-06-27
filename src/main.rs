@@ -4,9 +4,9 @@ extern crate log;
 extern crate env_logger;
 extern crate utp;
 extern crate getopts;
-extern crate url;
+extern crate daemonize;
 
-use url::{Url, ParseError};
+use daemonize::{Daemonize};
 use std::process;
 use std::process::Command;
 use std::thread;
@@ -15,6 +15,7 @@ use std::net;
 use std::str;
 use std::env;
 use std::fs::File;
+use std::path::Path;
 use getopts::Options;
 
 fn print_usage(program: &str, opts: Options) {
@@ -23,7 +24,7 @@ fn print_usage(program: &str, opts: Options) {
 }
 
 fn main() {
-    use utp::UtpStream;
+    use utp::{UtpStream, UtpListener, UtpSocket};
     use std::io::{stdin, stdout, stderr, Read, Write};
 
     // This example may run in either server or client mode.
@@ -68,60 +69,113 @@ fn main() {
     match mode {
         Mode::Server => {
             // Create a listening stream
-            let mut stream = UtpStream::bind("127.0.0.1:8080").expect("Error binding stream");
-            let mut writer = stdout();
-            let _ = writeln!(&mut stderr(), "Serving on 127.0.0.1:8080");
+            let addr = "0.0.0.0:55000";
+            let mut stream = UtpStream::bind(&addr).expect("Error binding stream");
 
             let mut f = File::open(input).unwrap();
+            println!("{}", addr);
+
+            let daemonize = Daemonize::new();
+
+            let mut writer = stdout();
+            let _ = writeln!(&mut stderr(), "Serving on {}", addr);
 
             // Create a reasonably sized buffer
             let mut payload = vec![0; 1024 * 1024];
 
-            // Wait for a new connection and print the received data to stdout.
-            // Reading and printing chunks like this feels more interactive than trying to read
-            // everything with `read_to_end` and avoids resizing the buffer multiple times.
-            loop {
-                match stream.read(&mut payload) {
-                    Ok(0) => break,
-                    Ok(read) => writer.write(&payload[..read]).expect("Error writing to stdout"),
-                    Err(e) => panic!("{}", e)
-                };
+            let mut startmagic = vec![0; 1];
+            match stream.read(&mut startmagic) {
+                Ok(1) => {
+                    println!("got the magic.");
+                }
+                _ => {
+                    panic!("uh oh.");
+                }
             }
+
+            // match daemonize.start() {
+            //     Ok(_) => { let _ = writeln!(&mut stderr(), "daemonized"); }
+            //     Err(e) => { let _ = writeln!(&mut stderr(), "RWRWARWARARRR"); }
+            // }
+
+            let mut total = 0;
+            // Create a reasonably sized buffer
+            let mut payload = vec![0; 1300];
+            loop {
+                match stream.write(&payload) {
+                    Ok(written) => { print!("."); }
+                    Err(e) => { panic!("{}", e); }
+                }
+            }
+            // loop {
+            //     match f.read(&mut payload) {
+            //         Ok(read) => {
+            //             println!("file read {}", read);
+            //             match stream.write(&payload[0..read]) {
+            //                 Ok(written) => {
+            //                     total += written;
+            //                     println!("written {}", total);
+            //                 },
+            //                 Err(e) => {
+            //                     stream.close().expect("Error closing stream");
+            //                     panic!("{}", e);
+            //                 }
+            //             }
+            //         },
+            //         Err(e) => {
+            //             stream.close().expect("Error closing stream");
+            //             panic!("{}", e);
+            //         }
+            //     }
+            // }
+            stream.close().expect("Error closing stream");
         }
         Mode::Client => {
             let sections: Vec<&str> = input.split(":").collect();
-            let addr = sections[0];
-            let path = sections[1];
-            let output = Command::new("ssh")
-                                 .arg(addr)
-                                 .arg("shoop -s path")
-                                 .output()
-                                 .unwrap_or_else(|e| {
-                                     panic!("failed to execute process: {}", e);
-                                 });
-            let result = output.stdout;
+            let addr: String = sections[0].to_owned();
+            let path: String = sections[1].to_owned();
+            let cmd = format!("~/bin/shoop -s {}", path);
+            println!("addr: {}, path: {}, cmd: {}", addr, path, cmd);
 
+            // let output = Command::new("ssh")
+            //                      .arg(addr.to_owned())
+            //                      .arg(cmd)
+            //                      .output()
+            //                      .unwrap_or_else(|e| {
+            //                          panic!("failed to execute process: {}", e);
+            //                      });
+            // let udp_addr = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+            //
+            // // Create a stream and try to connect to the remote address
+            // println!("shoop server told us to connect to {}", udp_addr);
+            let mut stream = UtpStream::connect("144.76.81.4:55000").expect("Error connecting to remote peer");
+            println!("initted.");
 
-            // Create a stream and try to connect to the remote address
-            let mut stream = UtpStream::connect(addr).expect("Error connecting to remote peer");
-            let mut reader = stdin();
-
+            // let mut f = File::create("outfile").unwrap();
+            // println!("created file.");
             // Create a reasonably sized buffer
             let mut payload = vec![0; 1024 * 1024];
 
-            // Read from stdin and send it to the remote server.
-            // Once again, reading and sending small chunks like this avoids having to read the
-            // entire input (which may be endless!) before starting to send, unlike what would
-            // happen if we were to use `read_to_end` on `reader`.
+            stream.write(b"\x01");
+            println!("write magic byte.");
+
+            let mut total = 0;
             loop {
-                match reader.read(&mut payload) {
-                    Ok(0) => break,
-                    Ok(read) => stream.write(&payload[..read]).expect("Error writing to stream"),
+                match stream.read(&mut payload) {
+                    Ok(0) => {
+                        println!("EOF");
+                        break
+                    },
+                    Ok(read) => {
+                        total += read;
+                        println!("read {}", total);
+                        // f.write_all(&payload[0..read-1]);
+                    },
                     Err(e) => {
                         stream.close().expect("Error closing stream");
                         panic!("{:?}", e);
                     }
-                };
+                }
             }
 
             // Explicitly close the stream.
