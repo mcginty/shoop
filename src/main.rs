@@ -10,7 +10,7 @@ use daemonize::{Daemonize};
 use std::process;
 use std::process::Command;
 use std::thread;
-use std::net::{SocketAddr, SocketAddrV4, Ipv4Addr};
+use std::net::{SocketAddr, SocketAddrV4, Ipv4Addr, UdpSocket};
 use std::net;
 use std::str;
 use std::env;
@@ -70,7 +70,7 @@ fn main() {
         Mode::Server => {
             // Create a listening stream
             let addr = "0.0.0.0:55000";
-            let mut stream = UtpStream::bind(&addr).expect("Error binding stream");
+            let mut stream = UdpSocket::bind(&addr).expect("Error binding stream");
 
             let mut f = File::open(input).unwrap();
             println!("{}", addr);
@@ -84,14 +84,8 @@ fn main() {
             let mut payload = vec![0; 1024 * 1024];
 
             let mut startmagic = vec![0; 1];
-            match stream.read(&mut startmagic) {
-                Ok(1) => {
-                    println!("got the magic.");
-                }
-                _ => {
-                    panic!("uh oh.");
-                }
-            }
+            let (amount_read, sender_address) = stream.recv_from(&mut startmagic).unwrap();
+            println!("got {} magic byte(s) from {:?}.", amount_read, sender_address);
 
             // match daemonize.start() {
             //     Ok(_) => { let _ = writeln!(&mut stderr(), "daemonized"); }
@@ -102,7 +96,7 @@ fn main() {
             // Create a reasonably sized buffer
             let mut payload = vec![0; 1300];
             loop {
-                match stream.write(&payload) {
+                match stream.send_to(&payload, sender_address) {
                     Ok(written) => { print!("."); }
                     Err(e) => { panic!("{}", e); }
                 }
@@ -128,7 +122,6 @@ fn main() {
             //         }
             //     }
             // }
-            stream.close().expect("Error closing stream");
         }
         Mode::Client => {
             let sections: Vec<&str> = input.split(":").collect();
@@ -148,20 +141,20 @@ fn main() {
             //
             // // Create a stream and try to connect to the remote address
             // println!("shoop server told us to connect to {}", udp_addr);
-            let mut stream = UtpStream::connect("144.76.81.4:55000").expect("Error connecting to remote peer");
+            let mut stream = UdpSocket::bind("0.0.0.0:0").expect("Error connecting to remote peer");
             println!("initted.");
 
             // let mut f = File::create("outfile").unwrap();
             // println!("created file.");
             // Create a reasonably sized buffer
             let mut payload = vec![0; 1024 * 1024];
-
-            stream.write(b"\x01");
+            stream.connect("144.76.81.4:55000");
+            stream.send(b"\x01");
             println!("write magic byte.");
 
             let mut total = 0;
             loop {
-                match stream.read(&mut payload) {
+                match stream.recv(&mut payload) {
                     Ok(0) => {
                         println!("EOF");
                         break
@@ -172,14 +165,12 @@ fn main() {
                         // f.write_all(&payload[0..read-1]);
                     },
                     Err(e) => {
-                        stream.close().expect("Error closing stream");
                         panic!("{:?}", e);
                     }
                 }
             }
 
             // Explicitly close the stream.
-            stream.close().expect("Error closing stream");
         }
     }
 }
