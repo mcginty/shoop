@@ -16,6 +16,9 @@ env_logger = "*"
 getopts = "0.2.14"
 daemonize = "*"
 
+[dependencies.udt]
+git = "https://github.com/eminence/udt-rs"
+
 [dependencies.utp]
 git = "https://github.com/meqif/rust-utp"
 
