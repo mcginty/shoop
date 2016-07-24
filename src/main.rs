@@ -70,7 +70,7 @@ fn send_file(stream: UdtSocket, filename: &str) -> Result<(), Error> {
                 match stream.sendmsg(&payload[0..read]) {
                     Ok(written) => {
                         total += written;
-                        print!("\rwritten {}kb / {}kb ({:.1}%)", total/1024, filesize/1024, (total as f64/1024f64) / (filesize as f64/1024f64));
+                        print!("\rwritten {}kb / {}kb ({:.1}%)", total/1024, filesize/1024, (total as f64/1024f64) / (filesize as f64/1024f64) * 100f64);
                     },
                     Err(e) => {
                         stream.close().expect("Error closing stream");
@@ -97,7 +97,7 @@ fn recv_file(sock: UdtSocket, filesize: u64, filename: &str) -> Result<(), Error
         let buf = try!(sock.recvmsg(1300).map_err(|e| Error::new(ErrorKind::Other, format!("{:?}", e))));
         total += buf.len() as u64;
         f.write_all(&buf[..]);
-        print!("\rreceived {}kb / {}kb ({:.1}%)", total/1024, filesize/1024, (total as f64/1024f64) / (filesize as f64/1024f64));
+        print!("\rreceived {}kb / {}kb ({:.1}%)", total/1024, filesize/1024, (total as f64/1024f64) / (filesize as f64/1024f64) * 100f64);
         if total >= filesize {
             println!("\nEOF");
             break;
