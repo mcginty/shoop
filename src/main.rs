@@ -73,11 +73,12 @@ fn main() {
             let sock = UdtSocket::new(SocketFamily::AFInet, SocketType::Stream).unwrap();
             sock.setsockopt(UdtOpts::UDP_RCVBUF, 5590000i32);
             sock.setsockopt(UdtOpts::UDP_SNDBUF, 5590000i32);
+            sock.setsockopt(UdtOpts::UDT_SNDSYN, true);
             sock.bind(SocketAddr::V4(SocketAddrV4::from_str("0.0.0.0:55000").unwrap())).unwrap();
             let my_addr = sock.getsockname().unwrap();
             println!("Server bound to {:?}", my_addr);
 
-            sock.listen(5).unwrap();
+            sock.listen(1).unwrap();
 
             let (mut stream, peer) = sock.accept().unwrap();
             println!("Received new connection from peer {:?}", peer);
@@ -87,7 +88,6 @@ fn main() {
             let daemonize = Daemonize::new();
 
             let mut writer = stdout();
-            // let _ = writeln!(&mut stderr(), "Serving on {}", addr);
 
             let mut startmagic = vec![0; 1];
             let amount_read = stream.recv(&mut startmagic, 1).unwrap();
@@ -99,14 +99,7 @@ fn main() {
             // }
 
             let mut total = 0;
-            // Create a reasonably sized buffer
             let mut payload = vec![0; 1300];
-            // loop {
-            //     match stream.send(&payload) {
-            //         Ok(written) => { print!("."); }
-            //         Err(e) => { panic!("{:?}", e); }
-            //     }
-            // }
             loop {
                 match f.read(&mut payload) {
                     Ok(read) => {
@@ -183,7 +176,7 @@ fn main() {
                     Ok(read) => {
                         total += read;
                         println!("read {}", total);
-                        f.write_all(&payload[0..(read-1) as usize]);
+                        f.write_all(&payload[0..(read) as usize]);
                     },
                     Err(e) => {
                         panic!("{:?}", e);
