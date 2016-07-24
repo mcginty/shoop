@@ -151,7 +151,7 @@ fn main() {
     match mode {
         Mode::Server => {
             udt::init();
-            let sock = UdtSocket::new(SocketFamily::AFInet, SocketType::Datagram).unwrap();
+            let sock = UdtSocket::new(SocketFamily::AFInet, SocketType::Stream).unwrap();
             sock.setsockopt(UdtOpts::UDP_RCVBUF, 5590000i32);
             sock.setsockopt(UdtOpts::UDP_SNDBUF, 5590000i32);
             // sock.setsockopt(UdtOpts::UDT_SNDSYN, true);
@@ -203,7 +203,7 @@ fn main() {
             // // Create a stream and try to connect to the remote address
             // println!("shoop server told us to connect to {}", udp_addr);
             udt::init();
-            let sock = UdtSocket::new(SocketFamily::AFInet, SocketType::Datagram).unwrap();
+            let sock = UdtSocket::new(SocketFamily::AFInet, SocketType::Stream).unwrap();
             sock.setsockopt(UdtOpts::UDP_RCVBUF, 5590000i32);
             sock.setsockopt(UdtOpts::UDP_SNDBUF, 5590000i32);
             let addr: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::from_str(&addr).unwrap(), 55000));
