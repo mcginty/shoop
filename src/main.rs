@@ -102,12 +102,13 @@ fn main() {
             let mut payload = vec![0; 1300];
             loop {
                 match f.read(&mut payload) {
+                    Ok(0) => {
+                        println!("\nEOF.");
+                        stream.sendmsg(&vec![0;0]);
+                        break;
+                    }
                     Ok(read) => {
                         match stream.send(&payload[0..read]) {
-                            Ok(0) => {
-                                println!("\nEOF.");
-                                break;
-                            }
                             Ok(written) => {
                                 total += written;
                                 print!("\rwritten {}", total);
@@ -173,12 +174,12 @@ fn main() {
             loop {
                 match sock.recv(&mut payload, 1024 * 1024) {
                     Ok(0) => {
-                        println!("EOF");
+                        println!("\nEOF");
                         break
                     },
                     Ok(read) => {
                         total += read;
-                        println!("read {}", total);
+                        print!("read {}\r", total);
                         f.write_all(&payload[0..(read) as usize]);
                     },
                     Err(e) => {
