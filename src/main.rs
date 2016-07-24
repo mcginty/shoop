@@ -110,8 +110,11 @@ fn main() {
             loop {
                 match f.read(&mut payload) {
                     Ok(read) => {
-                        println!("file read {}", read);
                         match stream.send(&payload[0..read]) {
+                            Ok(0) => {
+                                println!("EOF.");
+                                break;
+                            }
                             Ok(written) => {
                                 total += written;
                                 print!("\rwritten {}", total);
@@ -128,6 +131,7 @@ fn main() {
                     }
                 }
             }
+            stream.close().expect("Error closing stream.");
             println!("yay");
         }
         Mode::Client => {
@@ -186,7 +190,7 @@ fn main() {
                     }
                 }
             }
-            sock.close();
+            sock.close().expect("Error closing socket.");
         }
     }
 }
