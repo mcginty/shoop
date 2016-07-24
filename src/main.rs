@@ -105,7 +105,7 @@ fn main() {
                     Ok(read) => {
                         match stream.send(&payload[0..read]) {
                             Ok(0) => {
-                                println!("EOF.");
+                                println!("\nEOF.");
                                 break;
                             }
                             Ok(written) => {
@@ -124,6 +124,9 @@ fn main() {
                     }
                 }
             }
+
+            let amount_read = stream.recv(&mut startmagic, 1).unwrap();
+            println!("got {} final magic byte(s).", amount_read);
             stream.close().expect("Error closing stream.");
             println!("yay");
         }
@@ -183,6 +186,7 @@ fn main() {
                     }
                 }
             }
+            sock.send(b"\x01");
             sock.close().expect("Error closing socket.");
         }
     }
