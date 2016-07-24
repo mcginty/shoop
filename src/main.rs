@@ -39,7 +39,7 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let program = args[0].clone();
     let mut opts = Options::new();
-    opts.optopt("o", "", "set output file name", "NAME");
+    opts.optopt("o", "output", "set output file name", "NAME");
     opts.optflag("s", "server", "server mode");
     opts.optflag("p", "port-range", "server listening port range");
     opts.optflag("h", "help", "print this help menu");
@@ -73,7 +73,7 @@ fn main() {
             let sock = UdtSocket::new(SocketFamily::AFInet, SocketType::Stream).unwrap();
             sock.setsockopt(UdtOpts::UDP_RCVBUF, 5590000i32);
             sock.setsockopt(UdtOpts::UDP_SNDBUF, 5590000i32);
-            sock.bind(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::from_str("0.0.0.0").unwrap(), 55000))).unwrap();
+            sock.bind(SocketAddr::V4(SocketAddrV4::from_str("0.0.0.0:55000").unwrap())).unwrap();
             let my_addr = sock.getsockname().unwrap();
             println!("Server bound to {:?}", my_addr);
 
@@ -101,33 +101,34 @@ fn main() {
             let mut total = 0;
             // Create a reasonably sized buffer
             let mut payload = vec![0; 1300];
-            loop {
-                match stream.send(&payload) {
-                    Ok(written) => { print!("."); }
-                    Err(e) => { panic!("{:?}", e); }
-                }
-            }
             // loop {
-            //     match f.read(&mut payload) {
-            //         Ok(read) => {
-            //             println!("file read {}", read);
-            //             match stream.write(&payload[0..read]) {
-            //                 Ok(written) => {
-            //                     total += written;
-            //                     println!("written {}", total);
-            //                 },
-            //                 Err(e) => {
-            //                     stream.close().expect("Error closing stream");
-            //                     panic!("{}", e);
-            //                 }
-            //             }
-            //         },
-            //         Err(e) => {
-            //             stream.close().expect("Error closing stream");
-            //             panic!("{}", e);
-            //         }
+            //     match stream.send(&payload) {
+            //         Ok(written) => { print!("."); }
+            //         Err(e) => { panic!("{:?}", e); }
             //     }
             // }
+            loop {
+                match f.read(&mut payload) {
+                    Ok(read) => {
+                        println!("file read {}", read);
+                        match stream.send(&payload[0..read]) {
+                            Ok(written) => {
+                                total += written;
+                                print!("\rwritten {}", total);
+                            },
+                            Err(e) => {
+                                stream.close().expect("Error closing stream");
+                                panic!("{:?}", e);
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        stream.close().expect("Error closing stream");
+                        panic!("{}", e);
+                    }
+                }
+            }
+            println!("yay");
         }
         Mode::Client => {
             let sections: Vec<&str> = input.split(":").collect();
@@ -151,7 +152,7 @@ fn main() {
             let sock = UdtSocket::new(SocketFamily::AFInet, SocketType::Stream).unwrap();
             sock.setsockopt(UdtOpts::UDP_RCVBUF, 5590000i32);
             sock.setsockopt(UdtOpts::UDP_SNDBUF, 5590000i32);
-            let addr: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::from_str("144.76.81.4").unwrap(), 55000));
+            let addr: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::from_str(&addr).unwrap(), 55000));
             sock.bind(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::from_str("0.0.0.0").unwrap(), 0)));
             match sock.connect(addr) {
                 Ok(()) => {
@@ -162,9 +163,8 @@ fn main() {
                 }
             }
 
-            // let mut f = File::create("outfile").unwrap();
-            // println!("created file.");
-            // Create a reasonably sized buffer
+            let mut f = File::create("outfile").unwrap();
+            println!("created file.");
             let mut payload = vec![0; 1024 * 1024];
             sock.send(b"\x01");
             println!("write magic byte.");
@@ -179,15 +179,14 @@ fn main() {
                     Ok(read) => {
                         total += read;
                         println!("read {}", total);
-                        // f.write_all(&payload[0..read-1]);
+                        f.write_all(&payload[0..(read-1) as usize]);
                     },
                     Err(e) => {
                         panic!("{:?}", e);
                     }
                 }
             }
-
-            // Explicitly close the stream.
+            sock.close();
         }
     }
 }
