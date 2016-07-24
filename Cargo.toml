@@ -6,21 +6,22 @@ authors = ["Jake McGinty <me@jake.su>"]
 [dependencies]
 log = "*"
 env_logger = "*"
-#rust-crypto = "*"
-#rand = "0.3"
-#rustc-serialize = "0.3"
-#mio = "0.5"
-#mioco = "*"
-#rmp = "*"
-#resolve = "*"
+rust-crypto = "^0.2"
 getopts = "0.2.14"
 daemonize = "*"
+byteorder = "0.5"
+# serde = "^0.7"
+#rand = "0.3"
+#mio = "0.5"
+#mioco = "*"
+#resolve = "*"
 
 [dependencies.udt]
 git = "https://github.com/eminence/udt-rs"
 
-[dependencies.utp]
-git = "https://github.com/meqif/rust-utp"
+# [dependencies.utp]
+# git = "https://github.com/meqif/rust-utp"
+
 
 #[dependencies.url]
 #git = "https://github.com/servo/rust-url"
