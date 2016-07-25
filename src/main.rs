@@ -163,6 +163,12 @@ fn main() {
                 Key(keybytes) => { println!("{}", keybytes.to_hex()) }
             }
 
+            let daemonize = Daemonize::new();
+            match daemonize.start() {
+                Ok(_) => { let _ = writeln!(&mut stderr(), "daemonized"); }
+                Err(e) => { let _ = writeln!(&mut stderr(), "RWRWARWARARRR"); }
+            }
+
             udt::init();
             let sock = UdtSocket::new(SocketFamily::AFInet, SocketType::Datagram).unwrap();
             sock.setsockopt(UdtOpts::UDP_RCVBUF, 5590000i32);
@@ -175,12 +181,6 @@ fn main() {
 
             let (mut stream, peer) = sock.accept().unwrap();
             // dbg(format!("Received new connection from peer {:?}", peer));
-
-            let daemonize = Daemonize::new();
-            match daemonize.start() {
-                Ok(_) => { let _ = writeln!(&mut stderr(), "daemonized"); }
-                Err(e) => { let _ = writeln!(&mut stderr(), "RWRWARWARARRR"); }
-            }
 
             let mut clientversion = vec![0; 1];
             if let Ok(version) = stream.recvmsg(1) {
