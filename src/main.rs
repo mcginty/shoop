@@ -162,7 +162,9 @@ fn main() {
 
     match mode {
         Mode::Server => {
-            let ip = env::var("SSH_CONNECTION").unwrap_or(String::from("0.0.0.0"));
+            let sshconnstr = env::var("SSH_CONNECTION").unwrap_or(String::from("0.0.0.0 0 0.0.0.0 22")).trim().to_owned();
+            let sshconn: Vec<&str> = sshconnstr.split(" ").collect();
+            let ip = sshconn[2];
             let port = get_open_port(55000, 55100).unwrap();
             let key = secretbox::gen_key();
             match key {
