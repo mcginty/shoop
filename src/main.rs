@@ -12,21 +12,16 @@ extern crate sodiumoxide;
 extern crate rustc_serialize;
 
 use daemonize::{Daemonize};
-use std::process;
 use std::process::Command;
-use std::thread;
-use std::net::{SocketAddr, SocketAddrV4, Ipv4Addr};
-use std::net;
+use std::net::{UdpSocket, SocketAddr, SocketAddrV4, Ipv4Addr};
 use std::str;
 use std::env;
 use std::fs::File;
 use std::str::FromStr;
 use std::path::Path;
 use std::ffi::OsStr;
-use std::io;
-use std::io::{Cursor, Error, Seek, SeekFrom, ErrorKind, stdin, stdout, stderr, Read, Write};
+use std::io::{Cursor, Error, Seek, SeekFrom, ErrorKind, stderr, Read, Write};
 use getopts::Options;
-use crypto::{blake2b};
 use udt::*;
 use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
 use sodiumoxide::crypto::secretbox;
@@ -64,31 +59,28 @@ fn send_file(stream: UdtSocket, filename: &str) -> Result<(), Error> {
             // println!("wrote filesize of {:.2}kb.", filesize as f64 / 1024f64);
         }
     }
-    let mut total = 0;
+    // let mut total = 0;
     let mut payload = vec![0; 1300];
-    f.seek(SeekFrom::Start(0));
+    f.seek(SeekFrom::Start(0)).unwrap();
     loop {
         match f.read(&mut payload) {
             Ok(0) => {
                 // println!("\nEOF.");
-                stream.sendmsg(&vec![0;0]);
+                stream.sendmsg(&vec![0;0]).unwrap();
                 break;
             }
             Ok(read) => {
                 match stream.sendmsg(&payload[0..read]) {
-                    Ok(written) => {
-                        total += written;
-                        // print!("\rwritten {}kb / {}kb ({:.1}%)", total/1024, filesize/1024, (total as f64/1024f64) / (filesize as f64/1024f64) * 100f64);
-                    },
+                    Ok(_) =>  { }
                     Err(e) => {
                         stream.close().expect("Error closing stream");
-                        // panic!("{:?}", e);
+                        panic!("{:?}", e);
                     }
                 }
             },
             Err(e) => {
                 stream.close().expect("Error closing stream");
-                // panic!("{}", e);
+                panic!("{:?}", e);
             }
         }
     }
@@ -98,20 +90,38 @@ fn send_file(stream: UdtSocket, filename: &str) -> Result<(), Error> {
     Ok(())
 }
 
+fn get_open_port(start: u16, end: u16) -> Result<u16, ()> {
+    assert!(end >= start);
+    let mut p = start;
+    loop {
+        match UdpSocket::bind(&format!("0.0.0.0:{}", p)[..]) {
+            Ok(_) => {
+                return Ok(p);
+            }
+            Err(_) => {
+                p += 1;
+                if p > end {
+                    return Err(());
+                }
+            }
+        }
+    }
+}
+
 fn recv_file(sock: UdtSocket, filesize: u64, filename: &str) -> Result<(), Error> {
     let mut f = File::create(filename).unwrap();
     let mut total = 0u64;
     loop {
         let buf = try!(sock.recvmsg(1300).map_err(|e| Error::new(ErrorKind::Other, format!("{:?}", e))));
         total += buf.len() as u64;
-        f.write_all(&buf[..]);
+        f.write_all(&buf[..]).unwrap();
         print!("\rreceived {}kb / {}kb ({:.1}%)", total/1024, filesize/1024, (total as f64/1024f64) / (filesize as f64/1024f64) * 100f64);
         if total >= filesize {
             println!("\nEOF");
             break;
         }
     }
-    sock.close();
+    let _ = sock.close();
     Ok(())
 }
 
@@ -158,35 +168,34 @@ fn main() {
 
     match mode {
         Mode::Server => {
+            let ip = env::var("SSH_CONNECTION").unwrap_or(String::from("0.0.0.0"));
+            let port = get_open_port(55000, 55100).unwrap();
             let key = secretbox::gen_key();
             match key {
-                Key(keybytes) => { println!("{}", keybytes.to_hex()) }
+                Key(keybytes) => { println!("shoop 0 {} {} {}", ip, port, keybytes.to_hex()) }
             }
 
             let daemonize = Daemonize::new();
             match daemonize.start() {
                 Ok(_) => { let _ = writeln!(&mut stderr(), "daemonized"); }
-                Err(e) => { let _ = writeln!(&mut stderr(), "RWRWARWARARRR"); }
+                Err(_) => { let _ = writeln!(&mut stderr(), "RWRWARWARARRR"); }
             }
 
             udt::init();
             let sock = UdtSocket::new(SocketFamily::AFInet, SocketType::Datagram).unwrap();
-            sock.setsockopt(UdtOpts::UDP_RCVBUF, 5590000i32);
-            sock.setsockopt(UdtOpts::UDP_SNDBUF, 5590000i32);
-            sock.bind(SocketAddr::V4(SocketAddrV4::from_str("0.0.0.0:55000").unwrap())).unwrap();
-            let my_addr = sock.getsockname().unwrap();
-            // dbg(format!("Server bound to {:?}", my_addr));
+            sock.setsockopt(UdtOpts::UDP_RCVBUF, 5590000i32).unwrap();
+            sock.setsockopt(UdtOpts::UDP_SNDBUF, 5590000i32).unwrap();
+            sock.bind(SocketAddr::V4(SocketAddrV4::from_str(&format!("{}:{}", ip, port)[..]).unwrap())).unwrap();
 
             sock.listen(1).unwrap();
 
-            let (mut stream, peer) = sock.accept().unwrap();
+            let (stream, _) = sock.accept().unwrap();
             // dbg(format!("Received new connection from peer {:?}", peer));
 
-            let mut clientversion = vec![0; 1];
             if let Ok(version) = stream.recvmsg(1) {
                 // dbg(format!("frand using protocol version {}.", version[0]));
                 if version[0] == 0x00 {
-                    send_file(stream, &input);
+                    send_file(stream, &input).unwrap();
                 } else {
                     panic!("Unrecognized version.");
                 }
@@ -208,45 +217,46 @@ fn main() {
                                  .unwrap_or_else(|e| {
                                      panic!("failed to execute process: {}", e);
                                  });
-            let key = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-            println!("got key {}", key);
+            let keyhex = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+            let mut keybytes = [0u8; 32];
+            keybytes.copy_from_slice(&keyhex.from_hex().unwrap()[..]);
+            let key = Key(keybytes);
+            println!("got key {}", keyhex);
 
-            // Create a stream and try to connect to the remote address
-            //println!("shoop server told us to connect to {}", udp_addr);
-            //udt::init();
-            //let sock = UdtSocket::new(SocketFamily::AFInet, SocketType::Datagram).unwrap();
-            //sock.setsockopt(UdtOpts::UDP_RCVBUF, 5590000i32);
-            //sock.setsockopt(UdtOpts::UDP_SNDBUF, 5590000i32);
-            //let addr: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::from_str(&addr).unwrap(), 55000));
-            //sock.bind(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::from_str("0.0.0.0").unwrap(), 0)));
-            //match sock.connect(addr) {
-            //    Ok(()) => {
-            //        println!("connected!");
-            //    },
-            //    Err(e) => {
-            //        panic!("errrrrrrr {:?}", e);
-            //    }
-            //}
+            udt::init();
+            let sock = UdtSocket::new(SocketFamily::AFInet, SocketType::Datagram).unwrap();
+            sock.setsockopt(UdtOpts::UDP_RCVBUF, 5590000i32).unwrap();
+            sock.setsockopt(UdtOpts::UDP_SNDBUF, 5590000i32).unwrap();
+            let addr: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::from_str("144.76.81.4").unwrap(), 55000));
+            // let addr: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::from_str(&addr).unwrap(), 55000));
+            match sock.connect(addr) {
+               Ok(()) => {
+                   println!("connected!");
+               },
+               Err(e) => {
+                   panic!("errrrrrrr {:?}", e);
+               }
+            }
 
-            //sock.sendmsg(&[0u8; 1]);
-            //println!("checking if server is frand");
+            sock.sendmsg(&[0u8; 1]).unwrap();
+            println!("checking if server is frand");
 
-            //match sock.recvmsg(8) {
-            //    Ok(msg) => {
-            //        if msg.len() == 0 {
-            //            panic!("failed to get filesize from server, probable timeout.");
-            //        }
-            //        let mut rdr = Cursor::new(msg);
-            //        let filesize = rdr.read_u64::<LittleEndian>().unwrap();
-            //        println!("got reported filesize of {}", filesize);
-            //        let filename = Path::new(&path).file_name().unwrap_or(OsStr::new("outfile")).to_str().unwrap_or("outfile");
-            //        println!("writing to {}", filename);
-            //        recv_file(sock, filesize, filename);
-            //    }
-            //    Err(e) => {
-            //        panic!("{:?}", e);
-            //    }
-            //}
+            match sock.recvmsg(8) {
+               Ok(msg) => {
+                   if msg.len() == 0 {
+                       panic!("failed to get filesize from server, probable timeout.");
+                   }
+                   let mut rdr = Cursor::new(msg);
+                   let filesize = rdr.read_u64::<LittleEndian>().unwrap();
+                   println!("got reported filesize of {}", filesize);
+                   let filename = Path::new(&path).file_name().unwrap_or(OsStr::new("outfile")).to_str().unwrap_or("outfile");
+                   println!("writing to {}", filename);
+                   recv_file(sock, filesize, filename).unwrap();
+               }
+               Err(e) => {
+                   panic!("{:?}", e);
+               }
+            }
         }
     }
 }
