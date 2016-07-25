@@ -13,7 +13,7 @@ extern crate rustc_serialize;
 
 use daemonize::{Daemonize};
 use std::process::Command;
-use std::net::{UdpSocket, SocketAddr, SocketAddrV4, Ipv4Addr};
+use std::net::{UdpSocket, SocketAddr, SocketAddrV4};
 use std::str;
 use std::env;
 use std::fs::File;
@@ -25,7 +25,7 @@ use getopts::Options;
 use udt::*;
 use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
 use sodiumoxide::crypto::secretbox;
-use sodiumoxide::crypto::secretbox::xsalsa20poly1305::Key;
+use sodiumoxide::crypto::secretbox::xsalsa20poly1305::{NONCEBYTES, Key, Nonce};
 use rustc_serialize::hex::{FromHex, ToHex};
 
 
@@ -34,7 +34,7 @@ fn print_usage(program: &str, opts: Options) {
     print!("{}", opts.usage(&brief));
 }
 
-fn send_file(stream: UdtSocket, filename: &str) -> Result<(), Error> {
+fn send_file(stream: UdtSocket, filename: &str, key: Key) -> Result<(), Error> {
     let mut f = File::open(filename).unwrap();
 
     let mut filesize = 0u64;
@@ -70,7 +70,17 @@ fn send_file(stream: UdtSocket, filename: &str) -> Result<(), Error> {
                 break;
             }
             Ok(read) => {
-                match stream.sendmsg(&payload[0..read]) {
+                let nonce = secretbox::gen_nonce();
+                let Nonce(noncebytes) = nonce;
+                let mut hdr = vec![0u8; 1 + NONCEBYTES];
+                hdr[0] = NONCEBYTES as u8;
+                hdr[1..].clone_from_slice(&noncebytes);
+
+                let mut sealed = secretbox::seal(&payload[0..read], &nonce, &key);
+                let mut msg = Vec::with_capacity(hdr.len() + sealed.len());
+                msg.extend_from_slice(&hdr);
+                msg.append(&mut sealed);
+                match stream.sendmsg(&msg[..]) {
                     Ok(_) =>  { }
                     Err(e) => {
                         stream.close().expect("Error closing stream");
@@ -108,13 +118,29 @@ fn get_open_port(start: u16, end: u16) -> Result<u16, ()> {
     }
 }
 
-fn recv_file(sock: UdtSocket, filesize: u64, filename: &str) -> Result<(), Error> {
+fn recv_file(sock: UdtSocket, filesize: u64, filename: &str, key: Key) -> Result<(), Error> {
     let mut f = File::create(filename).unwrap();
     let mut total = 0u64;
     loop {
-        let buf = try!(sock.recvmsg(1300).map_err(|e| Error::new(ErrorKind::Other, format!("{:?}", e))));
-        total += buf.len() as u64;
-        f.write_all(&buf[..]).unwrap();
+        let buf = try!(sock.recvmsg(8192).map_err(|e| Error::new(ErrorKind::Other, format!("{:?}", e))));
+        if buf.len() < 1 {
+            return Err(Error::new(ErrorKind::InvalidInput, "empty message"));
+        }
+        let noncelen = buf[0] as usize;
+        if noncelen != NONCEBYTES {
+            return Err(Error::new(ErrorKind::InvalidInput, "nonce bytes unexpected len"));
+        }
+        if buf.len() < (1 + noncelen) {
+            return Err(Error::new(ErrorKind::InvalidInput, "nonce != nonce_len"));
+        }
+        let mut noncebytes = [0u8; NONCEBYTES];
+        noncebytes.copy_from_slice(&buf[1..1+noncelen]);
+        let nonce = Nonce(noncebytes);
+
+        let unsealed = try!(secretbox::open(&buf[1+noncelen..], &nonce, &key).map_err(|_| Error::new(ErrorKind::InvalidInput, "failed to decrypt")));
+
+        total += unsealed.len() as u64;
+        f.write_all(&unsealed[..]).unwrap();
         print!("\rreceived {}kb / {}kb ({:.1}%)", total/1024, filesize/1024, (total as f64/1024f64) / (filesize as f64/1024f64) * 100f64);
         if total >= filesize {
             println!("\nEOF");
@@ -179,8 +205,10 @@ fn main() {
 
             udt::init();
             let sock = UdtSocket::new(SocketFamily::AFInet, SocketType::Datagram).unwrap();
-            sock.setsockopt(UdtOpts::UDP_RCVBUF, 5590000i32).unwrap();
-            sock.setsockopt(UdtOpts::UDP_SNDBUF, 5590000i32).unwrap();
+            // sock.setsockopt(UdtOpts::UDP_RCVBUF, 5590000i32).unwrap();
+            // sock.setsockopt(UdtOpts::UDP_SNDBUF, 5590000i32).unwrap();
+            sock.setsockopt(UdtOpts::UDP_RCVBUF, 1024000i32).unwrap();
+            sock.setsockopt(UdtOpts::UDP_SNDBUF, 1024000i32).unwrap();
             sock.bind(SocketAddr::V4(SocketAddrV4::from_str(&format!("{}:{}", ip, port)[..]).unwrap())).unwrap();
 
             sock.listen(1).unwrap();
@@ -191,7 +219,7 @@ fn main() {
             if let Ok(version) = stream.recvmsg(1) {
                 // dbg(format!("frand using protocol version {}.", version[0]));
                 if version[0] == 0x00 {
-                    send_file(stream, &input).unwrap();
+                    send_file(stream, &input, key).unwrap();
                 } else {
                     panic!("Unrecognized version.");
                 }
@@ -220,6 +248,7 @@ fn main() {
             }
 
             let (magic, version, ip, port, keyhex) = (info[0], info[1], info[2], info[3], info[4]);
+            println!("connecting to {}:{}", ip, port);
             if magic != "shoop" || version != "0" {
                 panic!("response from server.. i don't know what it means. what does it mean? help me i am so confused.");
             }
@@ -231,10 +260,9 @@ fn main() {
 
             udt::init();
             let sock = UdtSocket::new(SocketFamily::AFInet, SocketType::Datagram).unwrap();
-            sock.setsockopt(UdtOpts::UDP_RCVBUF, 5590000i32).unwrap();
-            sock.setsockopt(UdtOpts::UDP_SNDBUF, 5590000i32).unwrap();
+            sock.setsockopt(UdtOpts::UDP_RCVBUF, 1024000i32).unwrap();
+            sock.setsockopt(UdtOpts::UDP_SNDBUF, 1024000i32).unwrap();
             let addr: SocketAddr = SocketAddr::V4(SocketAddrV4::from_str(&format!("{}:{}", ip, port)[..]).unwrap());
-            // let addr: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::from_str(&addr).unwrap(), 55000));
             match sock.connect(addr) {
                Ok(()) => {
                    println!("connected!");
@@ -257,7 +285,7 @@ fn main() {
                    println!("got reported filesize of {}", filesize);
                    let filename = Path::new(&path).file_name().unwrap_or(OsStr::new("outfile")).to_str().unwrap_or("outfile");
                    println!("writing to {}", filename);
-                   recv_file(sock, filesize, filename).unwrap();
+                   recv_file(sock, filesize, filename, key).unwrap();
                }
                Err(e) => {
                    panic!("{:?}", e);
