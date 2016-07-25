@@ -194,9 +194,6 @@ fn main() {
 
     match mode {
         Mode::Server => {
-            let Nonce(noncebytes) = secretbox::gen_nonce();
-            println!("new nonce is {}", noncebytes.len());
-            println!("NONCEBYTES {}", NONCEBYTES);
             let sshconnstr = env::var("SSH_CONNECTION").unwrap_or(String::from("0.0.0.0 0 0.0.0.0 22")).trim().to_owned();
             let sshconn: Vec<&str> = sshconnstr.split(" ").collect();
             let ip = sshconn[2];
