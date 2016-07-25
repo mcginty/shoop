@@ -127,12 +127,6 @@ fn recv_file(sock: UdtSocket, filesize: u64, filename: &str, key: Key) -> Result
             return Err(Error::new(ErrorKind::InvalidInput, "empty message"));
         }
         let noncelen = buf[0] as usize;
-        if total == 0 {
-            let Nonce(noncebytes) = secretbox::gen_nonce();
-            println!("new nonce is {}", noncebytes.len());
-            println!("NONCEBYTES {}", NONCEBYTES);
-            println!("nonce len {}", noncelen);
-        }
         if noncelen != NONCEBYTES {
             return Err(Error::new(ErrorKind::InvalidInput, "nonce bytes unexpected len"));
         }
