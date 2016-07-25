@@ -177,6 +177,10 @@ fn main() {
             // dbg(format!("Received new connection from peer {:?}", peer));
 
             let daemonize = Daemonize::new();
+            match daemonize.start() {
+                Ok(_) => { let _ = writeln!(&mut stderr(), "daemonized"); }
+                Err(e) => { let _ = writeln!(&mut stderr(), "RWRWARWARARRR"); }
+            }
 
             let mut clientversion = vec![0; 1];
             if let Ok(version) = stream.recvmsg(1) {
@@ -189,11 +193,6 @@ fn main() {
             } else {
                 panic!("Failed to receive version byte from client.");
             }
-
-            // match daemonize.start() {
-            //     Ok(_) => { let _ = writeln!(&mut stderr(), "daemonized"); }
-            //     Err(e) => { let _ = writeln!(&mut stderr(), "RWRWARWARARRR"); }
-            // }
         }
         Mode::Client => {
             let sections: Vec<&str> = input.split(":").collect();
