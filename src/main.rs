@@ -5,9 +5,8 @@ extern crate env_logger;
 extern crate getopts;
 extern crate daemonize;
 extern crate udt;
-extern crate crypto;
 extern crate byteorder;
-extern crate rand;
+extern crate time;
 extern crate sodiumoxide;
 extern crate rustc_serialize;
 
@@ -120,6 +119,7 @@ fn get_open_port(start: u16, end: u16) -> Result<u16, ()> {
 
 fn recv_file(sock: UdtSocket, filesize: u64, filename: &str, key: Key) -> Result<(), Error> {
     let mut f = File::create(filename).unwrap();
+    let mut ts = time::precise_time_ns();
     let mut total = 0u64;
     loop {
         let buf = try!(sock.recvmsg(8192).map_err(|e| Error::new(ErrorKind::Other, format!("{:?}", e))));
@@ -141,7 +141,10 @@ fn recv_file(sock: UdtSocket, filesize: u64, filename: &str, key: Key) -> Result
 
         total += unsealed.len() as u64;
         f.write_all(&unsealed[..]).unwrap();
-        print!("\rreceived {}kb / {}kb ({:.1}%)", total/1024, filesize/1024, (total as f64/1024f64) / (filesize as f64/1024f64) * 100f64);
+        if time::precise_time_ns() > ts + 10000000 {
+            print!("\rreceived {:.1}M / {:.1}M ({:.1}%)", (total as f64)/(1024f64*1024f64), (filesize as f64)/(1024f64*1024f64), (total as f64) / (filesize as f64) * 100f64);
+            ts = time::precise_time_ns();
+        }
         if total >= filesize {
             println!("\nEOF");
             break;
