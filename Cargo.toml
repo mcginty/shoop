@@ -9,9 +9,11 @@ env_logger = "*"
 rust-crypto = "^0.2"
 getopts = "0.2.14"
 daemonize = "*"
-byteorder = "0.5"
+byteorder = "^0.5"
+rand = "0.3"
+sodiumoxide = "0.0.12"
+rustc-serialize = "^0.3"
 # serde = "^0.7"
-#rand = "0.3"
 #mio = "0.5"
 #mioco = "*"
 #resolve = "*"
@@ -19,13 +21,12 @@ byteorder = "0.5"
 [dependencies.udt]
 git = "https://github.com/eminence/udt-rs"
 
+[dependencies.screech]
+git = "https://github.com/trevp/screech"
+
 # [dependencies.utp]
 # git = "https://github.com/meqif/rust-utp"
 
-
 #[dependencies.url]
 #git = "https://github.com/servo/rust-url"
-
-#[dependencies.screech]
-#git = "https://github.com/trevp/screech"
 
