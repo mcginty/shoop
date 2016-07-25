@@ -126,15 +126,9 @@ fn recv_file(sock: UdtSocket, filesize: u64, filename: &str) -> Result<(), Error
 }
 
 fn main() {
-
-    // This example may run in either server or client mode.
-    // Using an enum tends to make the code cleaner and easier to read.
     enum Mode {Server, Client}
-
-    // Start logging
     env_logger::init().expect("Error starting logger");
 
-    // Fetch arguments
     let args: Vec<String> = env::args().collect();
     let program = args[0].clone();
     let mut opts = Options::new();
@@ -217,7 +211,17 @@ fn main() {
                                  .unwrap_or_else(|e| {
                                      panic!("failed to execute process: {}", e);
                                  });
-            let keyhex = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+            let infostring = String::from_utf8_lossy(&output.stdout).to_owned().trim().to_owned();
+            let info: Vec<&str> = infostring.split(" ").collect();
+            if info.len() != 5 {
+                panic!("unexpected response format from server");
+            }
+
+            let (magic, version, ip, port, keyhex) = (info[0], info[1], info[2], info[3], info[4]);
+            if magic != "shoop" || version != "0" {
+                panic!("response from server.. i don't know what it means. what does it mean? help me i am so confused.");
+            }
+
             let mut keybytes = [0u8; 32];
             keybytes.copy_from_slice(&keyhex.from_hex().unwrap()[..]);
             let key = Key(keybytes);
@@ -227,7 +231,7 @@ fn main() {
             let sock = UdtSocket::new(SocketFamily::AFInet, SocketType::Datagram).unwrap();
             sock.setsockopt(UdtOpts::UDP_RCVBUF, 5590000i32).unwrap();
             sock.setsockopt(UdtOpts::UDP_SNDBUF, 5590000i32).unwrap();
-            let addr: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::from_str("144.76.81.4").unwrap(), 55000));
+            let addr: SocketAddr = SocketAddr::V4(SocketAddrV4::from_str(&format!("{}:{}", ip, port)[..]).unwrap());
             // let addr: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::from_str(&addr).unwrap(), 55000));
             match sock.connect(addr) {
                Ok(()) => {
