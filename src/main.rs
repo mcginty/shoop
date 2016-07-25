@@ -1,4 +1,3 @@
-//! Implementation of a simple uTP client and server.
 #[macro_use]
 extern crate log;
 extern crate env_logger;
@@ -54,18 +53,13 @@ fn send_file(stream: UdtSocket, filename: &str, key: Key) -> Result<(), Error> {
         Err(e) => {
             return Err(Error::new(ErrorKind::Other, format!("{:?}", e)))
         }
-        _ => {
-            // println!("wrote filesize of {:.2}kb.", filesize as f64 / 1024f64);
-        }
+        _ => {}
     }
-    // let mut total = 0;
     let mut payload = vec![0; 1300];
     f.seek(SeekFrom::Start(0)).unwrap();
     loop {
         match f.read(&mut payload) {
             Ok(0) => {
-                // println!("\nEOF.");
-                stream.sendmsg(&vec![0;0]).unwrap();
                 break;
             }
             Ok(read) => {
@@ -95,7 +89,6 @@ fn send_file(stream: UdtSocket, filename: &str, key: Key) -> Result<(), Error> {
     }
 
     stream.close().expect("Error closing stream.");
-    // println!("all done!");
     Ok(())
 }
 
@@ -183,7 +176,6 @@ fn main() {
         return;
     };
 
-    // Parse the mode argument
     let mode: Mode = match matches.opt_present("s") {
         true => Mode::Server,
         false => Mode::Client
@@ -208,8 +200,6 @@ fn main() {
 
             udt::init();
             let sock = UdtSocket::new(SocketFamily::AFInet, SocketType::Datagram).unwrap();
-            // sock.setsockopt(UdtOpts::UDP_RCVBUF, 5590000i32).unwrap();
-            // sock.setsockopt(UdtOpts::UDP_SNDBUF, 5590000i32).unwrap();
             sock.setsockopt(UdtOpts::UDP_RCVBUF, 1024000i32).unwrap();
             sock.setsockopt(UdtOpts::UDP_SNDBUF, 1024000i32).unwrap();
             sock.bind(SocketAddr::V4(SocketAddrV4::from_str(&format!("{}:{}", ip, port)[..]).unwrap())).unwrap();
@@ -217,10 +207,8 @@ fn main() {
             sock.listen(1).unwrap();
 
             let (stream, _) = sock.accept().unwrap();
-            // dbg(format!("Received new connection from peer {:?}", peer));
 
             if let Ok(version) = stream.recvmsg(1) {
-                // dbg(format!("frand using protocol version {}.", version[0]));
                 if version[0] == 0x00 {
                     send_file(stream, &input, key).unwrap();
                 } else {
@@ -235,7 +223,7 @@ fn main() {
             let addr: String = sections[0].to_owned();
             let path: String = sections[1].to_owned();
             let cmd = format!("~/bin/shoop -s {}", path);
-            println!("addr: {}, path: {}, cmd: {}", addr, path, cmd);
+            // println!("addr: {}, path: {}, cmd: {}", addr, path, cmd);
 
             let output = Command::new("ssh")
                                  .arg(addr.to_owned())
@@ -259,7 +247,6 @@ fn main() {
             let mut keybytes = [0u8; 32];
             keybytes.copy_from_slice(&keyhex.from_hex().unwrap()[..]);
             let key = Key(keybytes);
-            println!("got key {}", keyhex);
 
             udt::init();
             let sock = UdtSocket::new(SocketFamily::AFInet, SocketType::Datagram).unwrap();
@@ -268,7 +255,7 @@ fn main() {
             let addr: SocketAddr = SocketAddr::V4(SocketAddrV4::from_str(&format!("{}:{}", ip, port)[..]).unwrap());
             match sock.connect(addr) {
                Ok(()) => {
-                   println!("connected!");
+                   // println!("connected!");
                },
                Err(e) => {
                    panic!("errrrrrrr {:?}", e);
@@ -276,7 +263,7 @@ fn main() {
             }
 
             sock.sendmsg(&[0u8; 1]).unwrap();
-            println!("checking if server is frand");
+            // println!("checking if server is frand");
 
             match sock.recvmsg(8) {
                Ok(msg) => {
@@ -285,9 +272,8 @@ fn main() {
                    }
                    let mut rdr = Cursor::new(msg);
                    let filesize = rdr.read_u64::<LittleEndian>().unwrap();
-                   println!("got reported filesize of {}", filesize);
                    let filename = Path::new(&path).file_name().unwrap_or(OsStr::new("outfile")).to_str().unwrap_or("outfile");
-                   println!("writing to {}", filename);
+                   println!("{}, {:.1}MB", filename, (filesize as f64)/(1024f64*1024f64));
                    recv_file(sock, filesize, filename, key).unwrap();
                }
                Err(e) => {
