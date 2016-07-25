@@ -135,7 +135,7 @@ fn recv_file(sock: UdtSocket, filesize: u64, filename: &str, key: Key) -> Result
         total += unsealed.len() as u64;
         f.write_all(&unsealed[..]).unwrap();
         if time::precise_time_ns() > ts + 10000000 {
-            print!("\rreceived {:.1}M / {:.1}M ({:.1}%)", (total as f64)/(1024f64*1024f64), (filesize as f64)/(1024f64*1024f64), (total as f64) / (filesize as f64) * 100f64);
+            print!("\rreceived {:.1}M / {:.1}M ({:.1}%)                      ", (total as f64)/(1024f64*1024f64), (filesize as f64)/(1024f64*1024f64), (total as f64) / (filesize as f64) * 100f64);
             ts = time::precise_time_ns();
         }
         if total >= filesize {
@@ -222,8 +222,8 @@ fn main() {
             let sections: Vec<&str> = input.split(":").collect();
             let addr: String = sections[0].to_owned();
             let path: String = sections[1].to_owned();
-            let cmd = format!("~/bin/shoop -s {}", path);
-            // println!("addr: {}, path: {}, cmd: {}", addr, path, cmd);
+            let cmd = format!("shoop -s {}", path);
+            println!("addr: {}, path: {}, cmd: {}", addr, path, cmd);
 
             let output = Command::new("ssh")
                                  .arg(addr.to_owned())
@@ -235,13 +235,13 @@ fn main() {
             let infostring = String::from_utf8_lossy(&output.stdout).to_owned().trim().to_owned();
             let info: Vec<&str> = infostring.split(" ").collect();
             if info.len() != 5 {
-                panic!("unexpected response format from server");
+                panic!("Unexpected response from server. Are you suuuuure shoop is setup on the server?");
             }
 
             let (magic, version, ip, port, keyhex) = (info[0], info[1], info[2], info[3], info[4]);
             println!("connecting to {}:{}", ip, port);
             if magic != "shoop" || version != "0" {
-                panic!("response from server.. i don't know what it means. what does it mean? help me i am so confused.");
+                panic!("Unexpected response from server. Are you suuuuure shoop is setup on the server?");
             }
 
             let mut keybytes = [0u8; 32];
@@ -255,7 +255,7 @@ fn main() {
             let addr: SocketAddr = SocketAddr::V4(SocketAddrV4::from_str(&format!("{}:{}", ip, port)[..]).unwrap());
             match sock.connect(addr) {
                Ok(()) => {
-                   // println!("connected!");
+                   println!("connected!");
                },
                Err(e) => {
                    panic!("errrrrrrr {:?}", e);
