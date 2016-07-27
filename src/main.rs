@@ -222,7 +222,7 @@ fn main() {
             let sections: Vec<&str> = input.split(":").collect();
             let addr: String = sections[0].to_owned();
             let path: String = sections[1].to_owned();
-            let cmd = format!("shoop -s {}", path);
+            let cmd = format!("shoop -s '{}'", path);
             println!("addr: {}, path: {}, cmd: {}", addr, path, cmd);
 
             let output = Command::new("ssh")
