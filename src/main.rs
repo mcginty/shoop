@@ -26,6 +26,12 @@ use sodiumoxide::crypto::secretbox;
 use sodiumoxide::crypto::secretbox::xsalsa20poly1305::{NONCEBYTES, Key, Nonce};
 use rustc_serialize::hex::{FromHex, ToHex};
 
+fn command_exists(command: &str) -> bool {
+    match Command::new("which").arg(command).output() {
+        Ok(output) => output.status.success(),
+        Err(_)     => false
+    }
+}
 
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage: {} [options] REMOTE-LOCATION", program);
@@ -225,6 +231,7 @@ fn main() {
             let cmd = format!("shoop -s '{}'", path);
             println!("addr: {}, path: {}, cmd: {}", addr, path, cmd);
 
+            assert!(command_exists("ssh"), "`ssh` is required!");
             let output = Command::new("ssh")
                                  .arg(addr.to_owned())
                                  .arg(cmd)
