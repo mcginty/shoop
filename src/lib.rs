@@ -19,7 +19,7 @@ use std::str::FromStr;
 use std::path::Path;
 use std::ffi::OsStr;
 use std::io::{Cursor, Error, Seek, SeekFrom, ErrorKind, stderr, Read, Write};
-use udt::*;
+use udt::{UdtSocket, UdtOpts, SocketType, SocketFamily};
 use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
 use sodiumoxide::crypto::secretbox;
 use sodiumoxide::crypto::secretbox::xsalsa20poly1305::{NONCEBYTES, Key, Nonce};
