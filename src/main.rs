@@ -7,7 +7,9 @@ extern crate shoop;
 use std::str;
 use std::env;
 use getopts::Options;
-use shoop::{Server, Client};
+use shoop::{Server, Client, PortRange};
+
+const DEFAULT_PORT_RANGE: &'static str = "55000-55050";
 
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage: {} [options] REMOTE-LOCATION", program);
@@ -23,7 +25,7 @@ fn main() {
     let mut opts = Options::new();
     // TODO
     // opts.optopt("o", "output", "set output file name", "NAME");
-    // opts.optflag("p", "port-range", "server listening port range");
+    opts.optopt("p", "port-range", "server listening port range", DEFAULT_PORT_RANGE);
     opts.optflag("s", "server", "server mode");
     opts.optflag("h", "help", "print this help menu");
 
@@ -49,15 +51,20 @@ fn main() {
         false => Mode::Client
     };
 
+    let port_range = {
+        let range_opt = &matches.opt_str("p").unwrap_or(String::from(DEFAULT_PORT_RANGE));
+        PortRange::from(range_opt).unwrap()
+    };
+
     match mode {
         Mode::Server => {
-            Server::new(&input).start();
+            Server::new(port_range, &input).start();
         }
         Mode::Client => {
             let sections: Vec<&str> = input.split(":").collect();
             let addr: String = sections[0].to_owned();
             let path: String = sections[1].to_owned();
-            Client::new(&addr, &path).start();
+            Client::new(&addr, port_range, &path).start();
         }
     }
 }

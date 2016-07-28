@@ -14,8 +14,9 @@ use std::process::Command;
 use std::net::{UdpSocket, SocketAddr, SocketAddrV4};
 use std::str;
 use std::env;
-use std::fs::File;
+use std::fmt;
 use std::str::FromStr;
+use std::fs::File;
 use std::path::Path;
 use std::ffi::OsStr;
 use std::io::{Cursor, Error, Seek, SeekFrom, ErrorKind, stderr, Read, Write};
@@ -25,23 +26,68 @@ use sodiumoxide::crypto::secretbox;
 use sodiumoxide::crypto::secretbox::xsalsa20poly1305::{NONCEBYTES, Key, Nonce};
 use rustc_serialize::hex::{FromHex, ToHex};
 
+macro_rules! overprint {
+    ($fmt: expr) => {
+        print!(concat!("\x1b[2K\r", $fmt));
+        std::io::stdout().flush().unwrap();
+    };
+    ($fmt:expr, $($arg:tt)*) => {
+        print!(concat!("\x1b[2K\r", $fmt) , $($arg)*);
+        std::io::stdout().flush().unwrap();
+    };
+}
+
 pub struct Server<'a> {
+    filename: &'a str,
     sock: UdtSocket,
     key: Key,
-    filename: &'a str
 }
 
 pub struct Client<'a> {
     remote_host: &'a str,
+    port_range: PortRange,
     remote_path: &'a str,
 }
 
+pub struct PortRange {
+    start: u16,
+    end: u16
+}
+
+impl PortRange {
+    fn new(start: u16, end: u16) -> PortRange {
+        PortRange{ start: start, end: end }
+    }
+
+    pub fn from(s: &str) -> Result<PortRange, &str> {
+        let sections: Vec<&str> = s.split("-").collect();
+        if sections.len() != 2 {
+            return Err("Range must be specified in the form of \"<start>-<end>\"")
+        }
+        let (start, end) = (sections[0].parse::<u16>(),
+                            sections[1].parse::<u16>());
+        if start.is_err() || end.is_err() {
+            return Err("invalid port range");
+        }
+        Ok(PortRange::new(start.unwrap(), end.unwrap()))
+    }
+}
+
+impl fmt::Display for PortRange {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}-{}", self.start, self.end)
+    }
+}
+
 impl<'a> Server<'a> {
-    pub fn new(filename: &str) -> Server {
+    pub fn new(port_range : PortRange,
+               filename   : &str)
+        -> Server
+    {
         let sshconnstr = env::var("SSH_CONNECTION").unwrap_or(String::from("0.0.0.0 0 0.0.0.0 22")).trim().to_owned();
         let sshconn: Vec<&str> = sshconnstr.split(" ").collect();
         let ip = sshconn[2];
-        let port = Server::get_open_port(55000, 55100).unwrap();
+        let port = Server::get_open_port(port_range).unwrap();
         let key = secretbox::gen_key();
         let Key(keybytes) = key;
         println!("shoop 0 {} {} {}", ip, port, keybytes.to_hex());
@@ -135,9 +181,8 @@ impl<'a> Server<'a> {
         Ok(())
     }
 
-    fn get_open_port(start: u16, end: u16) -> Result<u16, ()> {
-        assert!(end >= start);
-        let mut p = start;
+    fn get_open_port(range: PortRange) -> Result<u16, ()> {
+        let mut p = range.start;
         loop {
             match UdpSocket::bind(&format!("0.0.0.0:{}", p)[..]) {
                 Ok(_) => {
@@ -145,7 +190,7 @@ impl<'a> Server<'a> {
                 }
                 Err(_) => {
                     p += 1;
-                    if p > end {
+                    if p > range.end {
                         return Err(());
                     }
                 }
@@ -156,14 +201,19 @@ impl<'a> Server<'a> {
 
 
 impl<'a> Client<'a> {
-    pub fn new(remote_ssh_host: &'a str, remote_path: &'a str) -> Client<'a> {
-        Client{ remote_host: remote_ssh_host, remote_path: remote_path }
+    pub fn new(remote_ssh_host : &'a str,
+               port_range      : PortRange,
+               remote_path     : &'a str)
+        -> Client<'a>
+    {
+        Client{ remote_host: remote_ssh_host, port_range: port_range, remote_path: remote_path }
     }
 
     pub fn start(&self) {
-        let cmd = format!("shoop -s '{}'", self.remote_path);
+        let cmd = format!("shoop -s '{}' -p {}", self.remote_path, self.port_range);
         // println!("addr: {}, path: {}, cmd: {}", addr, path, cmd);
 
+        overprint!("establishing SSH session...");
         assert!(Client::command_exists("ssh"), "`ssh` is required!");
         let output = Command::new("ssh")
                              .arg(self.remote_host.to_owned())
@@ -179,7 +229,7 @@ impl<'a> Client<'a> {
         }
 
         let (magic, version, ip, port, keyhex) = (info[0], info[1], info[2], info[3], info[4]);
-        println!("opening UDT connection to {}:{}", ip, port);
+        overprint!("opening UDT connection to {}:{}", ip, port);
         if magic != "shoop" || version != "0" {
             panic!("Unexpected response from server. Are you suuuuure shoop is setup on the server?");
         }
@@ -195,7 +245,7 @@ impl<'a> Client<'a> {
         let addr: SocketAddr = SocketAddr::V4(SocketAddrV4::from_str(&format!("{}:{}", ip, port)[..]).unwrap());
         match sock.connect(addr) {
            Ok(()) => {
-               println!("connected!");
+               overprint!("connection opened, shakin' hands, makin' frands");
            },
            Err(e) => {
                panic!("errrrrrrr {:?}", e);
@@ -203,7 +253,6 @@ impl<'a> Client<'a> {
         }
 
         sock.sendmsg(&[0u8; 1]).unwrap();
-        // println!("checking if server is frand");
 
         match sock.recvmsg(8) {
            Ok(msg) => {
@@ -213,7 +262,7 @@ impl<'a> Client<'a> {
                let mut rdr = Cursor::new(msg);
                let filesize = rdr.read_u64::<LittleEndian>().unwrap();
                let filename = Path::new(&self.remote_path).file_name().unwrap_or(OsStr::new("outfile")).to_str().unwrap_or("outfile");
-               println!("{}, {:.1}MB", filename, (filesize as f64)/(1024f64*1024f64));
+               overprint!("{}, {:.1}MB\n", filename, (filesize as f64)/(1024f64*1024f64));
                self.recv_file(sock, filesize, filename, key).unwrap();
            }
            Err(e) => {
@@ -253,8 +302,8 @@ impl<'a> Client<'a> {
 
             total += unsealed.len() as u64;
             f.write_all(&unsealed[..]).unwrap();
-            if time::precise_time_ns() > ts + 10000000 {
-                print!("\x1b[2K\rreceived {:.1}M / {:.1}M ({:.1}%)", (total as f64)/(1024f64*1024f64), (filesize as f64)/(1024f64*1024f64), (total as f64) / (filesize as f64) * 100f64);
+            if time::precise_time_ns() > ts + 100_000_000 {
+                overprint!("\x1b[2K\rreceived {:.1}M / {:.1}M ({:.1}%)", (total as f64)/(1024f64*1024f64), (filesize as f64)/(1024f64*1024f64), (total as f64) / (filesize as f64) * 100f64);
                 ts = time::precise_time_ns();
             }
             if total >= filesize {
