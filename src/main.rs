@@ -2,12 +2,6 @@
 extern crate log;
 extern crate env_logger;
 extern crate getopts;
-extern crate daemonize;
-extern crate udt;
-extern crate byteorder;
-extern crate time;
-extern crate sodiumoxide;
-extern crate rustc_serialize;
 extern crate shoop;
 
 use std::str;
