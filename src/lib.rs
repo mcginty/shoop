@@ -183,11 +183,8 @@ impl<'a> Server<'a> {
 
     fn get_open_port(range: PortRange) -> Result<u16, ()> {
         for p in range.start..range.end {
-            match UdpSocket::bind(&format!("0.0.0.0:{}", p)[..]) {
-                Ok(_) => {
-                    return Ok(p);
-                }
-                _ => {}
+            if let Ok(_) = UdpSocket::bind(&format!("0.0.0.0:{}", p)[..]) {
+                return Ok(p);
             }
         }
         Err(())
