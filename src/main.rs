@@ -21,9 +21,10 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let program = args[0].clone();
     let mut opts = Options::new();
+    // TODO
     // opts.optopt("o", "output", "set output file name", "NAME");
+    // opts.optflag("p", "port-range", "server listening port range");
     opts.optflag("s", "server", "server mode");
-    opts.optflag("p", "port-range", "server listening port range");
     opts.optflag("h", "help", "print this help menu");
 
     let matches = match opts.parse(&args[1..]) {
