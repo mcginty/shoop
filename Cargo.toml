@@ -3,6 +3,14 @@ name = "shoop"
 version = "0.1.0"
 authors = ["Jake McGinty <me@jake.su>"]
 
+[lib]
+name = "shoop"
+path = "src/lib.rs"
+
+[[bin]]
+name = "shoop"
+path = "src/main.rs"
+
 [dependencies]
 log = "*"
 env_logger = "*"
@@ -21,13 +29,4 @@ time = "^0.1"
 
 [dependencies.udt]
 git = "https://github.com/eminence/udt-rs"
-
-# [dependencies.screech]
-# git = "https://github.com/trevp/screech"
-
-# [dependencies.utp]
-# git = "https://github.com/meqif/rust-utp"
-
-#[dependencies.url]
-#git = "https://github.com/servo/rust-url"
 
