@@ -157,6 +157,7 @@ impl<'a> Server<'a> {
 
         info!("listening...");
         loop {
+            info!("waiting for connection...");
             let stream = match self.sock.accept() {
                 Ok((stream, _)) => stream,
                 Err(e) => { error!("error on sock accept() {:?}", e); panic!("{:?}", e); }
@@ -185,12 +186,15 @@ impl<'a> Server<'a> {
                         }
                     }
                 } else {
+                    error!("unrecognized version");
                     panic!("Unrecognized version.");
                 }
             } else {
+                error!("Failed to receive version byte from client.");
                 panic!("Failed to receive version byte from client.");
             }
         }
+        info!("exiting listen loop.");
     }
 
     fn send_file(&self, stream: UdtSocket, offset: u64) -> Result<(), ShoopErr> {
