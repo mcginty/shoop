@@ -224,7 +224,7 @@ impl<'a> Server<'a> {
         }
         let mut payload = vec![0; 1300];
         f.seek(SeekFrom::Start(offset)).unwrap();
-        info!("sending file...", remaining);
+        info!("sending file...");
         loop {
             match f.read(&mut payload) {
                 Ok(0) => {
