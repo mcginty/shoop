@@ -12,7 +12,15 @@ use shoop::{Server, Client, PortRange};
 const DEFAULT_PORT_RANGE: &'static str = "55000-55050";
 
 fn print_usage(program: &str, opts: Options) {
-    let brief = format!("Usage: {} [options] REMOTE-LOCATION", program);
+    let brief = format!(
+"Shoop is a ultrafast, (hopefully) secure file transfer tool, that is
+(hopefully) ideal for transferring large files.
+
+Usage: {0} [options] HOST:PATH
+...where HOST is an SSH host
+...where PATH is the path on the *remote* machine of the file you want
+
+Example: {0} seedbox.facebook.com:/home/zuck/internalized_sadness.zip", program);
     print!("{}", opts.usage(&brief));
 }
 
@@ -25,8 +33,9 @@ fn main() {
     let mut opts = Options::new();
     // TODO
     // opts.optopt("o", "output", "set output file name", "NAME");
+    // opts.optopt("a", "ssh-args", "arguments to pass to ssh directly (at your own risk)", ARGS);
     opts.optopt("p", "port-range", "server listening port range", DEFAULT_PORT_RANGE);
-    opts.optflag("s", "server", "server mode");
+    opts.optflag("s", "server", "server mode (advanced usage only)");
     opts.optflag("h", "help", "print this help menu");
 
     let matches = match opts.parse(&args[1..]) {
