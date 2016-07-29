@@ -2,7 +2,7 @@
 SCP for the modern era. If I were better at marketing I might call this "insanely" fast.
 
 # security
-🖕🖕🖕 This is so incredibly alpha. not alpha like how fraternities use it. alpha like unverified.🖕🖕🖕
+This is so incredibly alpha. not alpha like how fraternities use it. alpha like unverified.
 
 **DO NOT USE THIS FOR SECURITY SENSITIVE MATERIAL. THERE ARE KNOWN WEAKNESSES IN ITS CURRENT STATE.**
 
