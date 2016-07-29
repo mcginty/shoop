@@ -128,9 +128,8 @@ impl<'a> Server<'a> {
     pub fn start(&self) {
         self.sock.listen(1).unwrap();
 
-        let (stream, _) = self.sock.accept().unwrap();
-
         loop {
+            let (stream, _) = self.sock.accept().unwrap();
             if let Ok(starthdr) = stream.recvmsg(9) {
                 let version = starthdr[0];
                 let mut rdr = Cursor::new(starthdr);
@@ -139,9 +138,11 @@ impl<'a> Server<'a> {
                 if version == 0x00 {
                     match self.send_file(stream, offset) {
                         Ok(_) => {
+                            let _ = stream.close();
                             break;
                         }
                         Err(ShoopErr{ kind: ShoopErrKind::Severed, msg: _, finished: _}) => {
+                            let _ = stream.close();
                             continue;
                         }
                         Err(ShoopErr{ kind: ShoopErrKind::Fatal, msg, finished: _}) => {
@@ -267,25 +268,28 @@ impl<'a> Client<'a> {
         let key = Key(keybytes);
 
         udt::init();
-        let sock = UdtSocket::new(SocketFamily::AFInet, SocketType::Datagram).unwrap();
-        sock.setsockopt(UdtOpts::UDP_RCVBUF, 1024000i32).unwrap();
-        sock.setsockopt(UdtOpts::UDP_SNDBUF, 1024000i32).unwrap();
         let addr: SocketAddr = SocketAddr::V4(SocketAddrV4::from_str(&format!("{}:{}", ip, port)[..]).unwrap());
-        match sock.connect(addr) {
-           Ok(()) => {
-               overprint!(" - connection opened, shakin' hands, makin' frands");
-           },
-           Err(e) => {
-               panic!("errrrrrrr connecting to {}:{} - {:?}", ip, port, e);
-           }
-        }
 
         let mut offset = 0u64;
         loop {
+            let sock = UdtSocket::new(SocketFamily::AFInet, SocketType::Datagram).unwrap();
+            sock.setsockopt(UdtOpts::UDP_RCVBUF, 1024000i32).unwrap();
+            sock.setsockopt(UdtOpts::UDP_SNDBUF, 1024000i32).unwrap();
+            match sock.connect(addr) {
+               Ok(()) => {
+                   overprint!(" - connection opened, shakin' hands, makin' frands");
+               },
+               Err(e) => {
+                   panic!("errrrrrrr connecting to {}:{} - {:?}", ip, port, e);
+               }
+            }
             let mut wtr = vec![];
             wtr.push(0);
             wtr.write_u64::<LittleEndian>(offset).unwrap();
-            sock.sendmsg(&wtr[..]).unwrap();
+            match sock.sendmsg(&wtr[..]) {
+                Err(_) => { sock.close().unwrap(); continue; }
+                _      => {}
+            }
 
             match sock.recvmsg(8) {
                Ok(msg) => {
@@ -301,18 +305,17 @@ impl<'a> Client<'a> {
                             break;
                         }
                         Err(ShoopErr{ kind: ShoopErrKind::Severed, msg: _, finished}) => {
+                            println!(" * [[SEVERED]]");
                             offset = finished;
-                            continue;
                         }
                         Err(ShoopErr{ kind: ShoopErrKind::Fatal, msg, finished: _}) => {
                             panic!("{:?}", msg);
                         }
                    }
                }
-               Err(e) => {
-                   panic!("{:?}", e);
-               }
+               Err(_) => {}
             }
+            let _ = sock.close();
         }
     }
 
