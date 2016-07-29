@@ -132,7 +132,10 @@ impl<'a> Server<'a> {
                filename   : &str)
         -> Server
     {
-        let sshconnstr = env::var("SSH_CONNECTION").unwrap_or(String::from("0.0.0.0 0 0.0.0.0 22")).trim().to_owned();
+        let sshconnstr = match env::var("SSH_CONNECTION") {
+            Ok(s) => s.trim().to_owned(),
+            Err(_) => { error!("SSH_CONNECTION env variable unset and required. Quitting."); panic!("SSH_CONNECTION unset"); }
+        };
         let sshconn: Vec<&str> = sshconnstr.split(" ").collect();
         let ip = sshconn[2];
         let port = Server::get_open_port(port_range).unwrap();
@@ -201,15 +204,9 @@ impl<'a> Server<'a> {
     fn send_file(&self, stream: UdtSocket, offset: u64) -> Result<(), ShoopErr> {
         let mut f = File::open(self.filename).unwrap();
         f.seek(SeekFrom::Start(offset)).unwrap();
+        let metadata = f.metadata.unwrap();
 
-        let mut remaining = 0u64;
-        let mut buf = vec![0; 1024 * 1024];
-        loop {
-            match try!(f.read(&mut buf).map_err(|e| ShoopErr::from(e, 0u64))) {
-                0    => { break },
-                read => { remaining += read as u64 },
-            }
-        }
+        let mut remaining = metadata.len() - offset;
         info!("total {} bytes", remaining);
 
         let mut wtr = vec![];
