@@ -1,6 +1,5 @@
 #[macro_use]
 extern crate log;
-extern crate env_logger;
 extern crate getopts;
 extern crate daemonize;
 extern crate udt;
@@ -21,6 +20,7 @@ use std::path::Path;
 use std::ffi::OsStr;
 use std::io::{Cursor, Error, Seek, SeekFrom, stderr, Read, Write};
 use udt::{UdtSocket, UdtOpts, SocketType, SocketFamily};
+use log::{LogRecord, LogLevel, LogMetadata};
 use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
 use sodiumoxide::crypto::secretbox;
 use sodiumoxide::crypto::secretbox::xsalsa20poly1305::{NONCEBYTES, Key, Nonce};
@@ -64,11 +64,38 @@ struct ShoopErr {
     finished: u64,
 }
 
+pub struct ShoopLogger;
+
+impl log::Log for ShoopLogger {
+    fn enabled(&self, metadata: &LogMetadata) -> bool {
+        metadata.level() <= LogLevel::Info
+    }
+
+    fn log(&self, record: &LogRecord) {
+        if self.enabled(record.metadata()) {
+            let mut f = OpenOptions::new().append(true).create(true).open("shoop.log").expect("failed to open logfile");
+            let line = format!("{} - {}\n", record.level(), record.args());
+            print!("{}", line);
+            let _ = f.write_all(&line.into_bytes()[..]);
+            let _ = std::io::stdout().flush();
+        }
+    }
+}
+
+impl ShoopLogger {
+    pub fn init() -> Result<(), log::SetLoggerError> {
+        log::set_logger(|max_log_level| {
+            max_log_level.set(log::LogLevelFilter::Info);
+            Box::new(ShoopLogger)
+        })
+    }
+}
+
 impl ShoopErr {
     pub fn new(kind: ShoopErrKind, msg: &str, finished: u64) -> ShoopErr {
         ShoopErr { kind: kind, msg: Some(String::from(msg)), finished: finished }
     }
-    
+
     pub fn from(err: Error, finished: u64) -> ShoopErr {
         ShoopErr { kind: ShoopErrKind::Severed, msg: Some(format!("{:?}", err)), finished: finished }
     }
@@ -128,8 +155,13 @@ impl<'a> Server<'a> {
     pub fn start(&self) {
         self.sock.listen(1).unwrap();
 
+        info!("listening...");
         loop {
-            let (stream, _) = self.sock.accept().unwrap();
+            let stream = match self.sock.accept() {
+                Ok((stream, _)) => stream,
+                Err(e) => { error!("error on sock accept() {:?}", e); panic!("{:?}", e); }
+            };
+            info!("accepted connection!");
             if let Ok(starthdr) = stream.recvmsg(9) {
                 let version = starthdr[0];
                 let mut rdr = Cursor::new(starthdr);
@@ -138,14 +170,17 @@ impl<'a> Server<'a> {
                 if version == 0x00 {
                     match self.send_file(stream, offset) {
                         Ok(_) => {
+                            info!("done sending file");
                             let _ = stream.close();
                             break;
                         }
-                        Err(ShoopErr{ kind: ShoopErrKind::Severed, msg: _, finished: _}) => {
+                        Err(ShoopErr{ kind: ShoopErrKind::Severed, msg, finished}) => {
+                            info!("connection severed, msg: {:?}, finished: {}", msg, finished);
                             let _ = stream.close();
                             continue;
                         }
-                        Err(ShoopErr{ kind: ShoopErrKind::Fatal, msg, finished: _}) => {
+                        Err(ShoopErr{ kind: ShoopErrKind::Fatal, msg, finished}) => {
+                            info!("connection fatal, msg: {:?}, finished: {}", msg, finished);
                             panic!("{:?}", msg);
                         }
                     }

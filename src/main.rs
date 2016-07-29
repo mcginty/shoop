@@ -1,13 +1,12 @@
 #[macro_use]
 extern crate log;
-extern crate env_logger;
 extern crate getopts;
 extern crate shoop;
 
 use std::str;
 use std::env;
 use getopts::Options;
-use shoop::{Server, Client, PortRange};
+use shoop::{ShoopLogger, Server, Client, PortRange};
 
 const DEFAULT_PORT_RANGE: &'static str = "55000-55050";
 
@@ -26,7 +25,7 @@ Example: {0} seedbox.facebook.com:/home/zuck/internalized_sadness.zip", program)
 
 fn main() {
     enum Mode {Server, Client}
-    env_logger::init().expect("Error starting logger");
+    ShoopLogger::init().expect("Error starting shoop logger.");
 
     let args: Vec<String> = env::args().collect();
     let program = args[0].clone();
