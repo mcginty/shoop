@@ -73,7 +73,8 @@ impl log::Log for ShoopLogger {
 
     fn log(&self, record: &LogRecord) {
         if self.enabled(record.metadata()) {
-            let mut f = OpenOptions::new().append(true).create(true).open("/home/kaonashi/shoop/shoop.log").expect("failed to open logfile");
+            let logpath = Path::new(&env::var("HOME").unwrap()).join(".shoop.log");
+            let mut f = OpenOptions::new().append(true).create(true).open(logpath).expect("failed to open logfile");
             let line = format!("{} - {}\n", record.level(), record.args());
             print!("{}", line);
             let _ = f.write_all(&line.into_bytes()[..]);
