@@ -209,6 +209,7 @@ impl<'a> Server<'a> {
                 read => { remaining += read as u64 },
             }
         }
+        info!("total {} bytes", remaining);
 
         let mut wtr = vec![];
         wtr.write_u64::<LittleEndian>(remaining).unwrap();
@@ -223,6 +224,7 @@ impl<'a> Server<'a> {
         }
         let mut payload = vec![0; 1300];
         f.seek(SeekFrom::Start(offset)).unwrap();
+        info!("sending file...", remaining);
         loop {
             match f.read(&mut payload) {
                 Ok(0) => {
@@ -240,15 +242,18 @@ impl<'a> Server<'a> {
                     msg.extend_from_slice(&hdr);
                     msg.append(&mut sealed);
                     match stream.sendmsg(&msg[..]) {
-                        Ok(_) =>  { }
+                        Ok(0) => {
+                            return Err(ShoopErr::new(ShoopErrKind::Severed, "failed to write filesize header before timeout", remaining))
+                        },
                         Err(e) => {
-                            stream.close().expect("Error closing stream");
-                            panic!("{:?}", e);
+                            return Err(ShoopErr::new(ShoopErrKind::Severed, &format!("{:?}", e), remaining))
                         }
+                        _ => {}
                     }
                 },
                 Err(e) => {
                     stream.close().expect("Error closing stream");
+                    error!("failed to read from file.");
                     panic!("{:?}", e);
                 }
             }
