@@ -315,17 +315,18 @@ impl<'a> Client<'a> {
         let addr: SocketAddr = SocketAddr::V4(SocketAddrV4::from_str(&format!("{}:{}", ip, port)[..]).unwrap());
 
         let mut offset = 0u64;
+        let mut filesize = None;
         loop {
             let sock = UdtSocket::new(SocketFamily::AFInet, SocketType::Datagram).unwrap();
             sock.setsockopt(UdtOpts::UDP_RCVBUF, 1024000i32).unwrap();
             sock.setsockopt(UdtOpts::UDP_SNDBUF, 1024000i32).unwrap();
             match sock.connect(addr) {
-               Ok(()) => {
-                   overprint!(" - connection opened, shakin' hands, makin' frands");
-               },
-               Err(e) => {
-                   panic!("errrrrrrr connecting to {}:{} - {:?}", ip, port, e);
-               }
+                Ok(()) => {
+                    overprint!(" - connection opened, shakin' hands, makin' frands");
+                },
+                Err(e) => {
+                    panic!("errrrrrrr connecting to {}:{} - {:?}", ip, port, e);
+                }
             }
             let mut wtr = vec![];
             wtr.push(0);
@@ -336,28 +337,28 @@ impl<'a> Client<'a> {
             }
 
             match sock.recvmsg(8) {
-               Ok(msg) => {
-                   if msg.len() == 0 {
-                       panic!("failed to get filesize from server, probable timeout.");
-                   }
-                   let mut rdr = Cursor::new(msg);
-                   let filesize = rdr.read_u64::<LittleEndian>().unwrap();
-                   let filename = Path::new(&self.remote_path).file_name().unwrap_or(OsStr::new("outfile")).to_str().unwrap_or("outfile");
-                   overprint!(" + downloading {} ({:.1}MB)\n", filename, (filesize as f64)/(1024f64*1024f64));
-                   match self.recv_file(sock, filesize, filename, &key, offset) {
-                        Ok(_) => {
-                            break;
-                        }
-                        Err(ShoopErr{ kind: ShoopErrKind::Severed, msg: _, finished}) => {
-                            println!(" * [[SEVERED]]");
-                            offset = finished;
-                        }
-                        Err(ShoopErr{ kind: ShoopErrKind::Fatal, msg, finished: _}) => {
-                            panic!("{:?}", msg);
-                        }
-                   }
-               }
-               Err(_) => {}
+                Ok(msg) => {
+                    if msg.len() == 0 {
+                        panic!("failed to get filesize from server, probable timeout.");
+                    }
+                    let mut rdr = Cursor::new(msg);
+                    filesize = filesize.or(Some(rdr.read_u64::<LittleEndian>().unwrap()));
+                    let filename = Path::new(&self.remote_path).file_name().unwrap_or(OsStr::new("outfile")).to_str().unwrap_or("outfile");
+                    overprint!(" + downloading {} ({:.1}MB)\n", filename, (filesize.unwrap() as f64)/(1024f64*1024f64));
+                    match self.recv_file(sock, filesize.unwrap(), filename, &key, offset) {
+                         Ok(_) => {
+                             break;
+                         }
+                         Err(ShoopErr{ kind: ShoopErrKind::Severed, msg: _, finished}) => {
+                             println!(" * [[SEVERED]]");
+                             offset = finished;
+                         }
+                         Err(ShoopErr{ kind: ShoopErrKind::Fatal, msg, finished: _}) => {
+                             panic!("{:?}", msg);
+                         }
+                    }
+                }
+                Err(_) => {}
             }
             let _ = sock.close();
         }
@@ -374,7 +375,7 @@ impl<'a> Client<'a> {
         let mut f = OpenOptions::new().write(true).create(true).truncate(false).open(filename).unwrap();
         f.seek(SeekFrom::Start(offset)).unwrap();
         let mut ts = time::precise_time_ns();
-        let mut total = 0u64;
+        let mut total = offset;
         loop {
             let buf = try!(sock.recvmsg(8192)
                                .map_err(|e| ShoopErr::new(ShoopErrKind::Severed, &format!("{:?}", e), total)));
@@ -394,8 +395,8 @@ impl<'a> Client<'a> {
 
             let unsealed = try!(secretbox::open(&buf[1+noncelen..], &nonce, &key).map_err(|_| ShoopErr::new(ShoopErrKind::Fatal, "failed to decrypt", total)));
 
-            total += unsealed.len() as u64;
             f.write_all(&unsealed[..]).unwrap();
+            total += unsealed.len() as u64;
             if time::precise_time_ns() > ts + 100_000_000 {
                 overprint!("   {:.1}M / {:.1}M ({:.1}%)", (total as f64)/(1024f64*1024f64), (filesize as f64)/(1024f64*1024f64), (total as f64) / (filesize as f64) * 100f64);
                 ts = time::precise_time_ns();
