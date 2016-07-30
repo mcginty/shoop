@@ -14,17 +14,23 @@ use std::net::{UdpSocket, SocketAddr, SocketAddrV4};
 use std::str;
 use std::env;
 use std::fmt;
+use std::thread;
 use std::str::FromStr;
 use std::fs::{OpenOptions, File};
 use std::path::Path;
 use std::ffi::OsStr;
+use std::time::Duration;
 use std::io::{Cursor, Error, Seek, SeekFrom, stderr, Read, Write};
 use udt::{UdtSocket, UdtOpts, SocketType, SocketFamily};
 use log::{LogRecord, LogLevel, LogMetadata};
+use std::sync::mpsc;
 use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
 use sodiumoxide::crypto::secretbox;
 use sodiumoxide::crypto::secretbox::xsalsa20poly1305::{NONCEBYTES, Key, Nonce};
 use rustc_serialize::hex::{FromHex, ToHex};
+
+// TODO config
+const INITIAL_ACCEPT_TIMEOUT_SECONDS: u64 = 60;
 
 macro_rules! overprint {
     ($fmt: expr) => {
@@ -150,7 +156,7 @@ impl<'a> Server<'a> {
     {
         let sshconnstr = match env::var("SSH_CONNECTION") {
             Ok(s) => s.trim().to_owned(),
-            Err(_) => { error!("SSH_CONNECTION env variable unset and required. Quitting."); panic!("SSH_CONNECTION unset"); }
+            Err(_) => { die!("SSH_CONNECTION env variable unset and required. Quitting."); }
         };
         let sshconn: Vec<&str> = sshconnstr.split(" ").collect();
         let ip = sshconn[2];
@@ -175,13 +181,26 @@ impl<'a> Server<'a> {
     pub fn start(&self) {
         self.sock.listen(1).unwrap();
 
+        let mut connection_count: usize = 0;
         info!("listening...");
         loop {
             info!("waiting for connection...");
+            let (tx, rx) = mpsc::channel();
+            if connection_count == 0 {
+                thread::spawn(move || {
+                    thread::sleep(Duration::from_secs(INITIAL_ACCEPT_TIMEOUT_SECONDS));
+                    if let Err(_) = rx.try_recv() {
+                        error!("timed out waiting for initial connection. exiting.");
+                        std::process::exit(1);
+                    }
+                });
+            }
             let stream = match self.sock.accept() {
                 Ok((stream, _)) => stream,
-                Err(e) => { error!("error on sock accept() {:?}", e); panic!("{:?}", e); }
+                Err(e) => { die!("error on sock accept() {:?}", e); }
             };
+            connection_count += 1;
+            tx.send(()).unwrap();
             info!("accepted connection!");
             if let Ok(starthdr) = stream.recvmsg(9) {
                 let version = starthdr[0];
