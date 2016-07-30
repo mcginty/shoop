@@ -1,12 +1,12 @@
 # 🏎🏎🏎  shoop  🏎🏎🏎
 SCP for the modern era. If I were better at marketing I might call this "insanely" fast.
 
-# security
+# security and stability
 This is so incredibly alpha. not alpha like how fraternities use it. alpha like unverified.
 
 **DO NOT USE THIS FOR SECURITY SENSITIVE MATERIAL. THERE ARE KNOWN WEAKNESSES IN ITS CURRENT STATE.**
 
-THIS IS A PREVIEW. As time passes, software gets more secure assuming I keep my unlaziness.
+THIS IS A PREVIEW. As time passes, software gets more secure assuming I keep my unlaziness. Also right now, the protocol isn't stabilized, so you will need to keep the binaries on the server and client at (more or less) the same revision until we leave pre-alpha state.
 
 # what's it do
 Shoop is a high-speed encrypted file transfer tool reminiscent of scp. It uses SSH to bootstrap authentication and encryption, then uses UDT (a reliable protocol from the 2000s) instead of TCP (a reliable protocol from the 1970s).
