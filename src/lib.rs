@@ -17,8 +17,7 @@ use std::fmt;
 use std::thread;
 use std::str::FromStr;
 use std::fs::{OpenOptions, File};
-use std::path::Path;
-use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use std::io::{Cursor, Error, Seek, SeekFrom, stderr, Read, Write};
 use udt::{UdtSocket, UdtOpts, SocketType, SocketFamily};
@@ -64,6 +63,7 @@ pub struct Client<'a> {
     remote_host: &'a str,
     port_range: PortRange,
     remote_path: &'a str,
+    local_path: PathBuf,
 }
 
 pub struct PortRange {
@@ -307,10 +307,11 @@ impl<'a> Server<'a> {
 impl<'a> Client<'a> {
     pub fn new(remote_ssh_host : &'a str,
                port_range      : PortRange,
-               remote_path     : &'a str)
+               remote_path     : &'a str,
+               local_path      : PathBuf)
         -> Client<'a>
     {
-        Client{ remote_host: remote_ssh_host, port_range: port_range, remote_path: remote_path }
+        Client{ remote_host: remote_ssh_host, port_range: port_range, remote_path: remote_path, local_path: local_path }
     }
 
     pub fn start(&self) {
@@ -374,9 +375,8 @@ impl<'a> Client<'a> {
                     }
                     let mut rdr = Cursor::new(msg);
                     filesize = filesize.or(Some(rdr.read_u64::<LittleEndian>().unwrap()));
-                    let filename = Path::new(&self.remote_path).file_name().unwrap_or(OsStr::new("outfile")).to_str().unwrap_or("outfile");
-                    overprint!(" + downloading {} ({:.1}MB)\n", filename, (filesize.unwrap() as f64)/(1024f64*1024f64));
-                    match self.recv_file(sock, filesize.unwrap(), filename, &key, offset) {
+                    overprint!(" + downloading {} ({:.1}MB)\n", self.local_path.to_string_lossy(), (filesize.unwrap() as f64)/(1024f64*1024f64));
+                    match self.recv_file(sock, filesize.unwrap(), &self.local_path, &key, offset) {
                          Ok(_) => {
                              break;
                          }
@@ -402,7 +402,7 @@ impl<'a> Client<'a> {
         }
     }
 
-    fn recv_file(&self, sock: UdtSocket, filesize: u64, filename: &str, key: &Key, offset: u64) -> Result<(), ShoopErr> {
+    fn recv_file(&self, sock: UdtSocket, filesize: u64, filename: &PathBuf, key: &Key, offset: u64) -> Result<(), ShoopErr> {
         let mut f = OpenOptions::new().write(true).create(true).truncate(false).open(filename).unwrap();
         f.seek(SeekFrom::Start(offset)).unwrap();
         let mut ts = time::precise_time_ns();

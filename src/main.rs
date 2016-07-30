@@ -5,6 +5,7 @@ extern crate shoop;
 
 use std::str;
 use std::env;
+use std::path::Path;
 use getopts::Options;
 use shoop::{ShoopLogger, Server, Client, PortRange};
 
@@ -15,11 +16,13 @@ fn print_usage(program: &str, opts: Options) {
 "Shoop is a ultrafast, (hopefully) secure file transfer tool, that is
 (hopefully) ideal for transferring large files.
 
-Usage: {0} [options] HOST:PATH
+Usage: {0} [options] HOST:PATH DEST
 ...where HOST is an SSH host
 ...where PATH is the path on the *remote* machine of the file you want
+...where DEST is either an existing folder or a location for the new
+                 file (\".\" by default)
 
-Example: {0} seedbox.facebook.com:/home/zuck/internalized_sadness.zip", program);
+Example: {0} seedbox.facebook.com:/home/zuck/internalized_sadness.zip .", program);
     print!("{}", opts.usage(&brief));
 }
 
@@ -70,9 +73,28 @@ fn main() {
         }
         Mode::Client => {
             let sections: Vec<&str> = input.split(":").collect();
-            let addr: String = sections[0].to_owned();
-            let path: String = sections[1].to_owned();
-            Client::new(&addr, port_range, &path).start();
+            let remote_addr: String = sections[0].to_owned();
+            let remote_path_str = &sections[1].to_owned();
+            let remote_path = Path::new(remote_path_str);
+            let remote_file_name = match remote_path.file_name() {
+                Some(s) => s,
+                None => panic!("The remote path specified doesn't look like a path to a file.")
+            };
+
+            let output = if matches.free.len() > 1 {
+                matches.free[1].clone()
+            } else {
+                String::from(".")
+            };
+
+            let output_path = Path::new(&output);
+            let dest_path = if output_path.is_dir() {
+                output_path.join(remote_file_name)
+            } else {
+                output_path.to_path_buf()
+            };
+
+            Client::new(&remote_addr, port_range, &remote_path_str, dest_path).start();
         }
     }
 }
