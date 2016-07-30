@@ -18,7 +18,7 @@ use std::thread;
 use std::str::FromStr;
 use std::fs::{OpenOptions, File};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Instant, Duration};
 use std::io::{Cursor, Error, Seek, SeekFrom, stderr, Read, Write};
 use udt::{UdtSocket, UdtOpts, SocketType, SocketFamily};
 use log::{LogRecord, LogLevel, LogMetadata};
@@ -348,6 +348,7 @@ impl<'a> Client<'a> {
 
         let mut offset = 0u64;
         let mut filesize = None;
+        let start_ts = Instant::now();
         loop {
             let sock = UdtSocket::new(SocketFamily::AFInet, SocketType::Datagram).unwrap();
             sock.setsockopt(UdtOpts::UDP_RCVBUF, 1024000i32).unwrap();
@@ -393,6 +394,16 @@ impl<'a> Client<'a> {
             }
             let _ = sock.close();
         }
+
+        let elapsed = start_ts.elapsed().as_secs();
+        let fmt_time = if elapsed < 60 {
+            format!("{}s", elapsed)
+        } else if elapsed < 60 * 60 {
+            format!("{}m{}s", elapsed / 60, elapsed % 60)
+        } else {
+            format!("{}h{}m{}s", elapsed / (60 * 60), elapsed / 60, elapsed % 60)
+        };
+        println!("shooped it all up in {}", fmt_time);
     }
 
     fn command_exists(command: &str) -> bool {
@@ -405,8 +416,11 @@ impl<'a> Client<'a> {
     fn recv_file(&self, sock: UdtSocket, filesize: u64, filename: &PathBuf, key: &Key, offset: u64) -> Result<(), ShoopErr> {
         let mut f = OpenOptions::new().write(true).create(true).truncate(false).open(filename).unwrap();
         f.seek(SeekFrom::Start(offset)).unwrap();
-        let mut ts = time::precise_time_ns();
+        let mut ts = Instant::now();
         let mut total = offset;
+        let mut speed_ts = Instant::now();
+        let mut speed_total = total;
+        let mut speed = 0u64;
         loop {
             let buf = try!(sock.recvmsg(8192)
                                .map_err(|e| ShoopErr::new(ShoopErrKind::Severed, &format!("{:?}", e), total)));
@@ -428,12 +442,26 @@ impl<'a> Client<'a> {
 
             f.write_all(&unsealed[..]).unwrap();
             total += unsealed.len() as u64;
-            if time::precise_time_ns() > ts + 100_000_000 {
-                overprint!("   {:.1}M / {:.1}M ({:.1}%)", (total as f64)/(1024f64*1024f64), (filesize as f64)/(1024f64*1024f64), (total as f64) / (filesize as f64) * 100f64);
-                ts = time::precise_time_ns();
+            let speed_elapsed = speed_ts.elapsed();
+            if speed_elapsed > Duration::new(1, 0) {
+                speed = ((total - speed_total) as f64 / ((speed_elapsed.as_secs() as f64) + (speed_elapsed.subsec_nanos() as f64) / 1_000_000_000f64)) as u64;
+                speed_ts = Instant::now();
+                speed_total = total;
+            }
+            let speedfmt = if speed < 1024 {
+                format!("{} b/s", speed)
+            } else if speed < 1024 * 1024 {
+                format!("{} kb/s", speed / 1024)
+            } else {
+                format!("{:.1} MB/s", ((speed / 1024) as f64) / 1024f64)
+            };
+
+            if ts.elapsed() > Duration::new(0, 100_000_000) {
+                overprint!("   {:.1}M / {:.1}M ({:.1}%) [ {} ]", (total as f64)/(1024f64*1024f64), (filesize as f64)/(1024f64*1024f64), (total as f64) / (filesize as f64) * 100f64, speedfmt);
+                ts = Instant::now();
             }
             if total >= filesize {
-                println!("\nEOF");
+                println!("\ndone.");
                 break;
             }
         }
