@@ -416,6 +416,7 @@ impl<'a> Client<'a> {
     fn recv_file(&self, sock: UdtSocket, filesize: u64, filename: &PathBuf, key: &Key, offset: u64) -> Result<(), ShoopErr> {
         let mut f = OpenOptions::new().write(true).create(true).truncate(false).open(filename).unwrap();
         f.seek(SeekFrom::Start(offset)).unwrap();
+        let start = Instant::now();
         let mut ts = Instant::now();
         let mut total = offset;
         let mut speed_ts = Instant::now();
@@ -461,6 +462,7 @@ impl<'a> Client<'a> {
                 ts = Instant::now();
             }
             if total >= filesize {
+                overprint!("   {0:.1}M / {0:.1}M (100%) [ avg {1:.1} MB/s ]", (filesize as f64)/(1024f64*1024f64), ((total - offset) / start.elapsed().as_secs() / 1024) as f64 / 1024f64);
                 println!("\ndone.");
                 break;
             }
