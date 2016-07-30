@@ -114,12 +114,16 @@ impl ShoopErr {
     }
 }
 
-impl PortRange {
-    fn new(start: u16, end: u16) -> PortRange {
-        PortRange{ start: start, end: end }
+impl<'a> PortRange {
+    fn new(start: u16, end: u16) -> Result<PortRange, &'a str> {
+        if start > end {
+            Err("range end must be greater than or equal to start")
+        } else {
+            Ok(PortRange{ start: start, end: end })
+        }
     }
 
-    pub fn from(s: &str) -> Result<PortRange, &str> {
+    pub fn from(s: &str) -> Result<PortRange, &'a str> {
         let sections: Vec<&str> = s.split("-").collect();
         if sections.len() != 2 {
             return Err("Range must be specified in the form of \"<start>-<end>\"")
@@ -127,9 +131,9 @@ impl PortRange {
         let (start, end) = (sections[0].parse::<u16>(),
                             sections[1].parse::<u16>());
         if start.is_err() || end.is_err() {
-            return Err("invalid port range");
+            return Err("improperly formatted port range");
         }
-        Ok(PortRange::new(start.unwrap(), end.unwrap()))
+        PortRange::new(start.unwrap(), end.unwrap())
     }
 }
 
@@ -418,3 +422,4 @@ impl<'a> Client<'a> {
         Ok(())
     }
 }
+
