@@ -37,6 +37,17 @@ macro_rules! overprint {
     };
 }
 
+macro_rules! die {
+    ($fmt: expr) => {
+        error!($fmt);
+        panic!($fmt);
+    };
+    ($fmt:expr, $($arg:tt)*) => {
+        error!($fmt, $($arg)*);
+        panic!($fmt, $($arg)*);
+    };
+}
+
 pub struct Server<'a> {
     filename: &'a str,
     sock: UdtSocket,
@@ -97,6 +108,7 @@ impl ShoopErr {
         ShoopErr { kind: kind, msg: Some(String::from(msg)), finished: finished }
     }
 
+    #[allow(dead_code)]
     pub fn from(err: Error, finished: u64) -> ShoopErr {
         ShoopErr { kind: ShoopErrKind::Severed, msg: Some(format!("{:?}", err)), finished: finished }
     }
@@ -190,12 +202,10 @@ impl<'a> Server<'a> {
                         }
                     }
                 } else {
-                    error!("unrecognized version");
-                    panic!("Unrecognized version.");
+                    die!("unrecognized version");
                 }
             } else {
-                error!("Failed to receive version byte from client.");
-                panic!("Failed to receive version byte from client.");
+                die!("failed to receive version byte from client");
             }
         }
         info!("exiting listen loop.");
@@ -204,9 +214,9 @@ impl<'a> Server<'a> {
     fn send_file(&self, stream: UdtSocket, offset: u64) -> Result<(), ShoopErr> {
         let mut f = File::open(self.filename).unwrap();
         f.seek(SeekFrom::Start(offset)).unwrap();
-        let metadata = f.metadata.unwrap();
+        let metadata = f.metadata().unwrap();
 
-        let mut remaining = metadata.len() - offset;
+        let remaining = metadata.len() - offset;
         info!("total {} bytes", remaining);
 
         let mut wtr = vec![];
