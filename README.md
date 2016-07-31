@@ -18,17 +18,11 @@ From Vietnam, for example, it typically speeds up my downloads by about 2x, if n
 # install
 The server-side and client-side use the same binary (at least for now). Follow these instructions for both sides (at the moment, I'm not distributing binaries until this is more stable). If you're familiar with `mosh`, it's a very similar setup.
 
-* install rust (I recommend [rustup](https://www.rustup.rs/))
-* install libsodium (this is temporary until libsodium 1.0.11 is released and https://github.com/dnaq/sodiumoxide/pull/135 is merged). 
-  * **macOS**: `brew install libsodium`
-  * **everyone else**: Follow the instructions at https://github.com/jedisct1/libsodium. I believe in you.
-  
-```
-git clone https://github.com/mcginty/shoop
-cd shoop
-cargo build --release
-target/release/shoop <remote-host>:<remote-path> # on the client-side
-```
+1. install rust (I recommend [rustup](https://www.rustup.rs/))
+2. install libsodium
+    * **macOS**: `brew install libsodium`
+    * **everyone else**: follow [libsodium's instructions](https://download.libsodium.org/doc/installation/index.html). I believe in you.
+3. `cargo install shoop`
 
 ### server
 On the server-side, make sure that "shoop" is somewhere in your PATH. There's no `make install` right now, but for example on my server, I just did a quick:

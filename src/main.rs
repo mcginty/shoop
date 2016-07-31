@@ -7,7 +7,8 @@ use std::str;
 use std::env;
 use std::path::Path;
 use getopts::Options;
-use shoop::{ShoopLogger, Server, Client, PortRange};
+use shoop::{ShoopLogger, Server, download};
+use shoop::connection::PortRange;
 
 const DEFAULT_PORT_RANGE: &'static str = "55000-55050";
 
@@ -94,7 +95,7 @@ fn main() {
                 output_path.to_path_buf()
             };
 
-            Client::new(&remote_addr, port_range, &remote_path_str, dest_path).start();
+            download(&remote_addr, port_range, &remote_path_str, dest_path);
         }
     }
 }

@@ -2,18 +2,19 @@
 extern crate log;
 extern crate getopts;
 extern crate daemonize;
-extern crate udt;
 extern crate byteorder;
+extern crate udt;
 extern crate time;
 extern crate sodiumoxide;
 extern crate rustc_serialize;
 
+pub mod connection;
+
 use daemonize::{Daemonize};
 use std::process::Command;
-use std::net::{UdpSocket, SocketAddr, SocketAddrV4};
+use std::net::{SocketAddr, SocketAddrV4, IpAddr};
 use std::str;
 use std::env;
-use std::fmt;
 use std::thread;
 use std::str::FromStr;
 use std::fs::{OpenOptions, File};
@@ -55,26 +56,22 @@ macro_rules! die {
 
 pub struct Server<'a> {
     filename: &'a str,
-    sock: UdtSocket,
-    key: Key,
+    conn: connection::Server,
 }
 
 pub struct Client<'a> {
+    conn: connection::Client,
     remote_host: &'a str,
-    port_range: PortRange,
+    port_range: connection::PortRange,
     remote_path: &'a str,
     local_path: PathBuf,
-}
-
-pub struct PortRange {
-    start: u16,
-    end: u16
 }
 
 enum ShoopErrKind {
     Severed,
     Fatal,
 }
+
 struct ShoopErr {
     kind: ShoopErrKind,
     msg: Option<String>,
@@ -120,37 +117,8 @@ impl ShoopErr {
     }
 }
 
-impl<'a> PortRange {
-    fn new(start: u16, end: u16) -> Result<PortRange, &'a str> {
-        if start > end {
-            Err("range end must be greater than or equal to start")
-        } else {
-            Ok(PortRange{ start: start, end: end })
-        }
-    }
-
-    pub fn from(s: &str) -> Result<PortRange, &'a str> {
-        let sections: Vec<&str> = s.split("-").collect();
-        if sections.len() != 2 {
-            return Err("Range must be specified in the form of \"<start>-<end>\"")
-        }
-        let (start, end) = (sections[0].parse::<u16>(),
-                            sections[1].parse::<u16>());
-        if start.is_err() || end.is_err() {
-            return Err("improperly formatted port range");
-        }
-        PortRange::new(start.unwrap(), end.unwrap())
-    }
-}
-
-impl fmt::Display for PortRange {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}-{}", self.start, self.end)
-    }
-}
-
 impl<'a> Server<'a> {
-    pub fn new(port_range : PortRange,
+    pub fn new(port_range : connection::PortRange,
                filename   : &str)
         -> Server
     {
@@ -160,26 +128,21 @@ impl<'a> Server<'a> {
         };
         let sshconn: Vec<&str> = sshconnstr.split(" ").collect();
         let ip = sshconn[2];
-        let port = Server::get_open_port(port_range).unwrap();
         let key = secretbox::gen_key();
         let Key(keybytes) = key;
-        println!("shoop 0 {} {} {}", ip, port, keybytes.to_hex());
+        let conn = connection::Server::new(IpAddr::from_str(ip).unwrap(), port_range, key);
+        println!("shoop 0 {} {} {}", ip, conn.port, keybytes.to_hex());
         let daemonize = Daemonize::new();
         match daemonize.start() {
             Ok(_) => { let _ = writeln!(&mut stderr(), "daemonized"); }
             Err(_) => { let _ = writeln!(&mut stderr(), "RWRWARWARARRR"); }
         }
 
-        udt::init();
-        let sock = UdtSocket::new(SocketFamily::AFInet, SocketType::Datagram).unwrap();
-        sock.setsockopt(UdtOpts::UDP_RCVBUF, 1024000i32).unwrap();
-        sock.setsockopt(UdtOpts::UDP_SNDBUF, 1024000i32).unwrap();
-        sock.bind(SocketAddr::V4(SocketAddrV4::from_str(&format!("{}:{}", ip, port)[..]).unwrap())).unwrap();
-        Server { sock: sock, key: key, filename: filename }
+        Server { conn: conn, filename: filename }
     }
 
     pub fn start(&self) {
-        self.sock.listen(1).unwrap();
+        self.conn.listen().unwrap();
 
         let mut connection_count: usize = 0;
         info!("listening...");
@@ -195,28 +158,28 @@ impl<'a> Server<'a> {
                     }
                 });
             }
-            let stream = match self.sock.accept() {
-                Ok((stream, _)) => stream,
+            let client = match self.conn.accept() {
+                Ok(client) => client,
                 Err(e) => { die!("error on sock accept() {:?}", e); }
             };
             connection_count += 1;
             tx.send(()).unwrap();
             info!("accepted connection!");
-            if let Ok(starthdr) = stream.recvmsg(9) {
+            if let Ok(starthdr) = client.recv() {
                 let version = starthdr[0];
                 let mut rdr = Cursor::new(starthdr);
                 rdr.set_position(1);
                 let offset = rdr.read_u64::<LittleEndian>().unwrap();
                 if version == 0x00 {
-                    match self.send_file(stream, offset) {
+                    match self.send_file(&client, offset) {
                         Ok(_) => {
                             info!("done sending file");
-                            let _ = stream.close();
+                            let _ = client.close();
                             break;
                         }
                         Err(ShoopErr{ kind: ShoopErrKind::Severed, msg, finished}) => {
                             info!("connection severed, msg: {:?}, finished: {}", msg, finished);
-                            let _ = stream.close();
+                            let _ = client.close();
                             continue;
                         }
                         Err(ShoopErr{ kind: ShoopErrKind::Fatal, msg, finished}) => {
@@ -234,7 +197,7 @@ impl<'a> Server<'a> {
         info!("exiting listen loop.");
     }
 
-    fn send_file(&self, stream: UdtSocket, offset: u64) -> Result<(), ShoopErr> {
+    fn send_file(&self, client: &connection::ServerConnection, offset: u64) -> Result<(), ShoopErr> {
         let mut f = File::open(self.filename).unwrap();
         f.seek(SeekFrom::Start(offset)).unwrap();
         let metadata = f.metadata().unwrap();
@@ -244,14 +207,13 @@ impl<'a> Server<'a> {
 
         let mut wtr = vec![];
         wtr.write_u64::<LittleEndian>(remaining).unwrap();
-        match stream.sendmsg(&wtr[..]) {
-            Ok(0) => {
+        match client.send(&wtr[..]) {
+            Ok(()) => {
                 return Err(ShoopErr::new(ShoopErrKind::Severed, "failed to write filesize header before timeout", remaining))
             },
             Err(e) => {
                 return Err(ShoopErr::new(ShoopErrKind::Severed, &format!("{:?}", e), remaining))
             }
-            _ => {}
         }
         let mut payload = vec![0; 1300];
         f.seek(SeekFrom::Start(offset)).unwrap();
@@ -262,213 +224,170 @@ impl<'a> Server<'a> {
                     break;
                 }
                 Ok(read) => {
-                    let nonce = secretbox::gen_nonce();
-                    let Nonce(noncebytes) = nonce;
-                    let mut hdr = vec![0u8; 1 + NONCEBYTES];
-                    hdr[0] = NONCEBYTES as u8;
-                    hdr[1..].clone_from_slice(&noncebytes);
-
-                    let mut sealed = secretbox::seal(&payload[0..read], &nonce, &self.key);
-                    let mut msg = Vec::with_capacity(hdr.len() + sealed.len());
-                    msg.extend_from_slice(&hdr);
-                    msg.append(&mut sealed);
-                    match stream.sendmsg(&msg[..]) {
-                        Ok(0) => {
+                    match client.send(&payload[0..read]) {
+                        Ok(()) => {
                             return Err(ShoopErr::new(ShoopErrKind::Severed, "failed to write filesize header before timeout", remaining))
                         },
                         Err(e) => {
                             return Err(ShoopErr::new(ShoopErrKind::Severed, &format!("{:?}", e), remaining))
                         }
-                        _ => {}
                     }
                 },
                 Err(e) => {
-                    stream.close().expect("Error closing stream");
+                    client.close().expect("Error closing stream");
                     error!("failed to read from file.");
                     panic!("{:?}", e);
                 }
             }
         }
 
-        stream.close().expect("Error closing stream.");
+        client.close().expect("Error closing stream.");
         Ok(())
-    }
-
-    fn get_open_port(range: PortRange) -> Result<u16, ()> {
-        for p in range.start..range.end {
-            if let Ok(_) = UdpSocket::bind(&format!("0.0.0.0:{}", p)[..]) {
-                return Ok(p);
-            }
-        }
-        Err(())
     }
 }
 
-impl<'a> Client<'a> {
-    pub fn new(remote_ssh_host : &'a str,
-               port_range      : PortRange,
-               remote_path     : &'a str,
-               local_path      : PathBuf)
-        -> Client<'a>
-    {
-        Client{ remote_host: remote_ssh_host, port_range: port_range, remote_path: remote_path, local_path: local_path }
+pub fn download(remote_ssh_host : &str,
+                port_range      : connection::PortRange,
+                remote_path     : &str,
+                local_path      : PathBuf)
+{
+    let cmd = format!("shoop -s '{}' -p {}", remote_path, port_range);
+    // println!("addr: {}, path: {}, cmd: {}", addr, path, cmd);
+
+    overprint!(" - establishing SSH session...");
+    assert!(command_exists("ssh"), "`ssh` is required!");
+    let output = Command::new("ssh")
+                         .arg(remote_ssh_host.to_owned())
+                         .arg(cmd)
+                         .output()
+                         .unwrap_or_else(|e| {
+                             panic!("failed to execute process: {}", e);
+                         });
+    let infostring = String::from_utf8_lossy(&output.stdout).to_owned().trim().to_owned();
+    let info: Vec<&str> = infostring.split(" ").collect();
+    if info.len() != 5 {
+        panic!("Unexpected response from server. Are you suuuuure shoop is setup on the server?");
     }
 
-    pub fn start(&self) {
-        let cmd = format!("shoop -s '{}' -p {}", self.remote_path, self.port_range);
-        // println!("addr: {}, path: {}, cmd: {}", addr, path, cmd);
+    let (magic, version, ip, port, keyhex) = (info[0], info[1], info[2], info[3], info[4]);
+    overprint!(" - opening UDT connection...");
+    if magic != "shoop" || version != "0" {
+        panic!("Unexpected response from server. Are you suuuuure shoop is setup on the server?");
+    }
 
-        overprint!(" - establishing SSH session...");
-        assert!(Client::command_exists("ssh"), "`ssh` is required!");
-        let output = Command::new("ssh")
-                             .arg(self.remote_host.to_owned())
-                             .arg(cmd)
-                             .output()
-                             .unwrap_or_else(|e| {
-                                 panic!("failed to execute process: {}", e);
-                             });
-        let infostring = String::from_utf8_lossy(&output.stdout).to_owned().trim().to_owned();
-        let info: Vec<&str> = infostring.split(" ").collect();
-        if info.len() != 5 {
-            panic!("Unexpected response from server. Are you suuuuure shoop is setup on the server?");
+    let mut keybytes = [0u8; 32];
+    keybytes.copy_from_slice(&keyhex.from_hex().unwrap()[..]);
+    let key = Key(keybytes);
+    let addr: SocketAddr = SocketAddr::V4(SocketAddrV4::from_str(&format!("{}:{}", ip, port)[..]).unwrap());
+    let conn = connection::Client::new(addr, key);
+
+    let mut offset = 0u64;
+    let mut filesize = None;
+    let start_ts = Instant::now();
+    loop {
+        match conn.connect() {
+            Ok(()) => {
+                overprint!(" - connection opened, shakin' hands, makin' frands");
+            },
+            Err(e) => {
+                panic!("errrrrrrr connecting to {}:{} - {:?}", ip, port, e);
+            }
+        }
+        let mut wtr = vec![];
+        wtr.push(0);
+        wtr.write_u64::<LittleEndian>(offset).unwrap();
+        match conn.send(&wtr[..]) {
+            Err(_) => { conn.close().unwrap(); continue; }
+            _      => {}
         }
 
-        let (magic, version, ip, port, keyhex) = (info[0], info[1], info[2], info[3], info[4]);
-        overprint!(" - opening UDT connection...");
-        if magic != "shoop" || version != "0" {
-            panic!("Unexpected response from server. Are you suuuuure shoop is setup on the server?");
-        }
-
-        let mut keybytes = [0u8; 32];
-        keybytes.copy_from_slice(&keyhex.from_hex().unwrap()[..]);
-        let key = Key(keybytes);
-
-        udt::init();
-        let addr: SocketAddr = SocketAddr::V4(SocketAddrV4::from_str(&format!("{}:{}", ip, port)[..]).unwrap());
-
-        let mut offset = 0u64;
-        let mut filesize = None;
-        let start_ts = Instant::now();
-        loop {
-            let sock = UdtSocket::new(SocketFamily::AFInet, SocketType::Datagram).unwrap();
-            sock.setsockopt(UdtOpts::UDP_RCVBUF, 1024000i32).unwrap();
-            sock.setsockopt(UdtOpts::UDP_SNDBUF, 1024000i32).unwrap();
-            match sock.connect(addr) {
-                Ok(()) => {
-                    overprint!(" - connection opened, shakin' hands, makin' frands");
-                },
-                Err(e) => {
-                    panic!("errrrrrrr connecting to {}:{} - {:?}", ip, port, e);
+        match conn.recv() {
+            Ok(msg) => {
+                if msg.len() == 0 {
+                    panic!("failed to get filesize from server, probable timeout.");
+                }
+                let mut rdr = Cursor::new(msg);
+                filesize = filesize.or(Some(rdr.read_u64::<LittleEndian>().unwrap()));
+                overprint!(" + downloading {} ({:.1}MB)\n", local_path.to_string_lossy(), (filesize.unwrap() as f64)/(1024f64*1024f64));
+                match recv_file(&conn, filesize.unwrap(), &local_path, offset) {
+                     Ok(_) => {
+                         break;
+                     }
+                     Err(ShoopErr{ kind: ShoopErrKind::Severed, msg: _, finished}) => {
+                         println!(" * [[SEVERED]]");
+                         offset = finished;
+                     }
+                     Err(ShoopErr{ kind: ShoopErrKind::Fatal, msg, finished: _}) => {
+                         panic!("{:?}", msg);
+                     }
                 }
             }
-            let mut wtr = vec![];
-            wtr.push(0);
-            wtr.write_u64::<LittleEndian>(offset).unwrap();
-            match sock.sendmsg(&wtr[..]) {
-                Err(_) => { sock.close().unwrap(); continue; }
-                _      => {}
-            }
+            Err(_) => {}
+        }
+        let _ = conn.close();
+    }
 
-            match sock.recvmsg(8) {
-                Ok(msg) => {
-                    if msg.len() == 0 {
-                        panic!("failed to get filesize from server, probable timeout.");
-                    }
-                    let mut rdr = Cursor::new(msg);
-                    filesize = filesize.or(Some(rdr.read_u64::<LittleEndian>().unwrap()));
-                    overprint!(" + downloading {} ({:.1}MB)\n", self.local_path.to_string_lossy(), (filesize.unwrap() as f64)/(1024f64*1024f64));
-                    match self.recv_file(sock, filesize.unwrap(), &self.local_path, &key, offset) {
-                         Ok(_) => {
-                             break;
-                         }
-                         Err(ShoopErr{ kind: ShoopErrKind::Severed, msg: _, finished}) => {
-                             println!(" * [[SEVERED]]");
-                             offset = finished;
-                         }
-                         Err(ShoopErr{ kind: ShoopErrKind::Fatal, msg, finished: _}) => {
-                             panic!("{:?}", msg);
-                         }
-                    }
-                }
-                Err(_) => {}
-            }
-            let _ = sock.close();
+    let elapsed = start_ts.elapsed().as_secs();
+    let fmt_time = if elapsed < 60 {
+        format!("{}s", elapsed)
+    } else if elapsed < 60 * 60 {
+        format!("{}m{}s", elapsed / 60, elapsed % 60)
+    } else {
+        format!("{}h{}m{}s", elapsed / (60 * 60), elapsed / 60, elapsed % 60)
+    };
+    println!("shooped it all up in {}", fmt_time);
+}
+
+fn command_exists(command: &str) -> bool {
+    match Command::new("which").arg(command).output() {
+        Ok(output) => output.status.success(),
+        Err(_)     => false
+    }
+}
+
+fn recv_file(conn: &connection::Client, filesize: u64, filename: &PathBuf, offset: u64) -> Result<(), ShoopErr> {
+    let mut f = OpenOptions::new().write(true).create(true).truncate(false).open(filename).unwrap();
+    f.seek(SeekFrom::Start(offset)).unwrap();
+    let start = Instant::now();
+    let mut ts = Instant::now();
+    let mut total = offset;
+    let mut speed_ts = Instant::now();
+    let mut speed_total = total;
+    let mut speed = 0u64;
+    loop {
+        let buf = try!(conn.recv()
+                           .map_err(|e| ShoopErr::new(ShoopErrKind::Severed, &format!("{:?}", e), total)));
+        if buf.len() < 1 {
+            return Err(ShoopErr::new(ShoopErrKind::Severed, "empty msg", total));
         }
 
-        let elapsed = start_ts.elapsed().as_secs();
-        let fmt_time = if elapsed < 60 {
-            format!("{}s", elapsed)
-        } else if elapsed < 60 * 60 {
-            format!("{}m{}s", elapsed / 60, elapsed % 60)
+        f.write_all(&buf[..]).unwrap();
+        total += buf.len() as u64;
+        let speed_elapsed = speed_ts.elapsed();
+        if speed_elapsed > Duration::new(1, 0) {
+            speed = ((total - speed_total) as f64 / ((speed_elapsed.as_secs() as f64) + (speed_elapsed.subsec_nanos() as f64) / 1_000_000_000f64)) as u64;
+            speed_ts = Instant::now();
+            speed_total = total;
+        }
+        let speedfmt = if speed < 1024 {
+            format!("{} b/s", speed)
+        } else if speed < 1024 * 1024 {
+            format!("{} kb/s", speed / 1024)
         } else {
-            format!("{}h{}m{}s", elapsed / (60 * 60), elapsed / 60, elapsed % 60)
+            format!("{:.1} MB/s", ((speed / 1024) as f64) / 1024f64)
         };
-        println!("shooped it all up in {}", fmt_time);
-    }
 
-    fn command_exists(command: &str) -> bool {
-        match Command::new("which").arg(command).output() {
-            Ok(output) => output.status.success(),
-            Err(_)     => false
+        if ts.elapsed() > Duration::new(0, 100_000_000) {
+            overprint!("   {:.1}M / {:.1}M ({:.1}%) [ {} ]", (total as f64)/(1024f64*1024f64), (filesize as f64)/(1024f64*1024f64), (total as f64) / (filesize as f64) * 100f64, speedfmt);
+            ts = Instant::now();
+        }
+        if total >= filesize {
+            overprint!("   {0:.1}M / {0:.1}M (100%) [ avg {1:.1} MB/s ]", (filesize as f64)/(1024f64*1024f64), ((total - offset) / start.elapsed().as_secs() / 1024) as f64 / 1024f64);
+            println!("\ndone.");
+            break;
         }
     }
-
-    fn recv_file(&self, sock: UdtSocket, filesize: u64, filename: &PathBuf, key: &Key, offset: u64) -> Result<(), ShoopErr> {
-        let mut f = OpenOptions::new().write(true).create(true).truncate(false).open(filename).unwrap();
-        f.seek(SeekFrom::Start(offset)).unwrap();
-        let start = Instant::now();
-        let mut ts = Instant::now();
-        let mut total = offset;
-        let mut speed_ts = Instant::now();
-        let mut speed_total = total;
-        let mut speed = 0u64;
-        loop {
-            let buf = try!(sock.recvmsg(8192)
-                               .map_err(|e| ShoopErr::new(ShoopErrKind::Severed, &format!("{:?}", e), total)));
-            if buf.len() < 1 {
-                return Err(ShoopErr::new(ShoopErrKind::Severed, "empty msg", total));
-            }
-            let noncelen = buf[0] as usize;
-            if noncelen != NONCEBYTES {
-                return Err(ShoopErr::new(ShoopErrKind::Fatal, "nonce length not recognized", total));
-            }
-            if buf.len() < (1 + noncelen) {
-                return Err(ShoopErr::new(ShoopErrKind::Severed, "msg not long enough to contain nonce", total));
-            }
-            let mut noncebytes = [0u8; NONCEBYTES];
-            noncebytes.copy_from_slice(&buf[1..1+noncelen]);
-            let nonce = Nonce(noncebytes);
-
-            let unsealed = try!(secretbox::open(&buf[1+noncelen..], &nonce, &key).map_err(|_| ShoopErr::new(ShoopErrKind::Fatal, "failed to decrypt", total)));
-
-            f.write_all(&unsealed[..]).unwrap();
-            total += unsealed.len() as u64;
-            let speed_elapsed = speed_ts.elapsed();
-            if speed_elapsed > Duration::new(1, 0) {
-                speed = ((total - speed_total) as f64 / ((speed_elapsed.as_secs() as f64) + (speed_elapsed.subsec_nanos() as f64) / 1_000_000_000f64)) as u64;
-                speed_ts = Instant::now();
-                speed_total = total;
-            }
-            let speedfmt = if speed < 1024 {
-                format!("{} b/s", speed)
-            } else if speed < 1024 * 1024 {
-                format!("{} kb/s", speed / 1024)
-            } else {
-                format!("{:.1} MB/s", ((speed / 1024) as f64) / 1024f64)
-            };
-
-            if ts.elapsed() > Duration::new(0, 100_000_000) {
-                overprint!("   {:.1}M / {:.1}M ({:.1}%) [ {} ]", (total as f64)/(1024f64*1024f64), (filesize as f64)/(1024f64*1024f64), (total as f64) / (filesize as f64) * 100f64, speedfmt);
-                ts = Instant::now();
-            }
-            if total >= filesize {
-                overprint!("   {0:.1}M / {0:.1}M (100%) [ avg {1:.1} MB/s ]", (filesize as f64)/(1024f64*1024f64), ((total - offset) / start.elapsed().as_secs() / 1024) as f64 / 1024f64);
-                println!("\ndone.");
-                break;
-            }
-        }
-        let _ = sock.close();
-        Ok(())
-    }
+    let _ = conn.close();
+    Ok(())
 }
 
