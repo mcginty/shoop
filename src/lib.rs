@@ -126,8 +126,8 @@ impl<'a> Server<'a> {
         println!("shoop 0 {} {} {}", ip, conn.port, keybytes.to_hex());
         let daemonize = Daemonize::new();
         match daemonize.start() {
-            Ok(_) => { let _ = writeln!(&mut stderr(), "daemonized"); }
-            Err(_) => { let _ = writeln!(&mut stderr(), "RWRWARWARARRR"); }
+            Ok(_) => { let _ = info!("daemonized"); }
+            Err(_) => { let _ = error!("RWRWARWARARRR"); }
         }
 
         Server { conn: conn, filename: filename }
