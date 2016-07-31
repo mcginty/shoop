@@ -18,21 +18,12 @@ name = "shoop"
 path = "src/main.rs"
 
 [dependencies]
-log = "*"
-env_logger = "*"
-# rust-crypto = "^0.2"
+log = "^0.3"
 getopts = "0.2.14"
-daemonize = "*"
+daemonize = "^0.2"
 byteorder = "^0.5"
-# rand = "0.3"
 sodiumoxide = "0.0.12"
 rustc-serialize = "^0.3"
 time = "^0.1"
-# serde = "^0.7"
-#mio = "0.5"
-#mioco = "*"
-#resolve = "*"
-
-[dependencies.udt]
-git = "https://github.com/eminence/udt-rs"
+udt = "^0.1"
 
