@@ -9,6 +9,11 @@ repository = "https://github.com/mcginty/shoop"
 readme = "README.md"
 license = "MIT"
 
+include = [
+  "**/*.rs",
+  "Cargo.toml"
+],
+
 [lib]
 name = "shoop"
 path = "src/lib.rs"
