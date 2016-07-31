@@ -94,7 +94,7 @@ impl Client {
 
     pub fn recv(&self) -> Result<Vec<u8>, UdtError> {
         crypto::open(&try!(self.sock.recvmsg(MAX_MESSAGE_SIZE))[..], &self.key)
-               .map_err(|e| UdtError{ err_code: -1, err_msg: String::from("decryption failure") })
+               .map_err(|_| UdtError{ err_code: -1, err_msg: String::from("decryption failure") })
     }
 
     pub fn close(&self) -> Result<(), UdtError> {

@@ -21,12 +21,11 @@ use std::fs::{OpenOptions, File};
 use std::path::{Path, PathBuf};
 use std::time::{Instant, Duration};
 use std::io::{Cursor, Error, Seek, SeekFrom, stderr, Read, Write};
-use udt::{UdtSocket, UdtOpts, SocketType, SocketFamily};
 use log::{LogRecord, LogLevel, LogMetadata};
 use std::sync::mpsc;
 use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
 use sodiumoxide::crypto::secretbox;
-use sodiumoxide::crypto::secretbox::xsalsa20poly1305::{NONCEBYTES, Key, Nonce};
+use sodiumoxide::crypto::secretbox::xsalsa20poly1305::Key;
 use rustc_serialize::hex::{FromHex, ToHex};
 
 // TODO config
@@ -59,14 +58,7 @@ pub struct Server<'a> {
     conn: connection::Server,
 }
 
-pub struct Client<'a> {
-    conn: connection::Client,
-    remote_host: &'a str,
-    port_range: connection::PortRange,
-    remote_path: &'a str,
-    local_path: PathBuf,
-}
-
+#[allow(dead_code)]
 enum ShoopErrKind {
     Severed,
     Fatal,
