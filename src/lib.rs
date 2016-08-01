@@ -122,11 +122,9 @@ impl<'a> Server<'a> {
         let port = connection::Server::get_open_port(&port_range).unwrap();
         println!("shoop 0 {} {} {}", ip, port, keybytes.to_hex());
 
-        let stdout = Path::new(&env::var("HOME").unwrap()).join(".shoop.access.log");
-        let stderr = Path::new(&env::var("HOME").unwrap()).join(".shoop.err.log");
-        daemonize_redirect(Some(stdout),
-                           Some(stderr),
-                           ChdirMode::ChdirRoot).unwrap();
+        let stdout = Some(Path::new(&env::var("HOME").unwrap()).join(".shoop.log"));
+        let stderr = Some(Path::new(&env::var("HOME").unwrap()).join(".shoop.log"));
+        daemonize_redirect(stdout, stderr, ChdirMode::ChdirRoot).unwrap();
 
         let conn = connection::Server::new(IpAddr::from_str(&ip).unwrap(), port, key);
         Server { ip: ip, conn: conn, filename: filename }
