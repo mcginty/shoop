@@ -4,7 +4,7 @@ SCP for the modern era. If I were better at marketing I might call this "insanel
 # security and stability
 This is so incredibly alpha. not alpha like how fraternities use it. alpha like unverified.
 
-**DO NOT USE THIS FOR SECURITY SENSITIVE MATERIAL. THERE ARE KNOWN WEAKNESSES IN ITS CURRENT STATE.**
+**DO NOT USE THIS FOR SECURITY SENSITIVE MATERIAL.**
 
 THIS IS A PREVIEW. As time passes, software gets more secure assuming I keep my unlaziness. Also right now, the protocol isn't stabilized, so you will need to keep the binaries on the server and client at (more or less) the same revision until we leave pre-alpha state.
 
