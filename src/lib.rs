@@ -54,6 +54,7 @@ macro_rules! die {
 }
 
 pub struct Server<'a> {
+    pub ip: String,
     filename: &'a str,
     conn: connection::Server,
 }
@@ -119,18 +120,17 @@ impl<'a> Server<'a> {
             Err(_) => { die!("SSH_CONNECTION env variable unset and required. Quitting."); }
         };
         let sshconn: Vec<&str> = sshconnstr.split(" ").collect();
-        let ip = sshconn[2];
+        let ip = sshconn[2].to_owned();
         let key = secretbox::gen_key();
         let Key(keybytes) = key;
-        let conn = connection::Server::new(IpAddr::from_str(ip).unwrap(), port_range, key);
+        let conn = connection::Server::new(IpAddr::from_str(&ip).unwrap(), port_range, key);
         println!("shoop 0 {} {} {}", ip, conn.port, keybytes.to_hex());
         let daemonize = Daemonize::new();
         match daemonize.start() {
             Ok(_) => { let _ = info!("daemonized"); }
             Err(_) => { let _ = error!("RWRWARWARARRR"); }
         }
-
-        Server { conn: conn, filename: filename }
+        Server { ip: ip, conn: conn, filename: filename }
     }
 
     pub fn start(&self) {

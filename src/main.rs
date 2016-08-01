@@ -70,7 +70,8 @@ fn main() {
 
     match mode {
         Mode::Server => {
-            Server::new(port_range, &input).start();
+            let server = Server::new(port_range, &input);
+            server.start();
         }
         Mode::Client => {
             let sections: Vec<&str> = input.split(":").collect();

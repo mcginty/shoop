@@ -103,7 +103,7 @@ impl Client {
 }
 
 impl Server {
-    fn get_open_port(range: &PortRange) -> Result<u16, ()> {
+    pub fn get_open_port(range: &PortRange) -> Result<u16, ()> {
         for p in range.start..range.end {
             if let Ok(_) = UdpSocket::bind(&format!("0.0.0.0:{}", p)[..]) {
                 return Ok(p);
@@ -116,11 +116,11 @@ impl Server {
         let sock = new_udt_socket();
 
         let port = Server::get_open_port(&port_range).unwrap();
-        sock.bind(SocketAddr::new(ip_addr, port)).unwrap();
         Server{ sock: sock, ip_addr: ip_addr, port: port, key: key }
     }
 
     pub fn listen(&self) -> Result<(), UdtError> {
+        self.sock.bind(SocketAddr::new(self.ip_addr, self.port)).unwrap();
         self.sock.listen(1)
     }
 
