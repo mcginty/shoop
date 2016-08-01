@@ -7,6 +7,7 @@ extern crate udt;
 extern crate time;
 extern crate sodiumoxide;
 extern crate rustc_serialize;
+extern crate colored;
 
 pub mod connection;
 
@@ -21,8 +22,9 @@ use std::fs::{OpenOptions, File};
 use std::path::{Path, PathBuf};
 use std::time::{Instant, Duration};
 use std::io::{Cursor, Error, Seek, SeekFrom, stderr, Read, Write};
-use log::{LogRecord, LogLevel, LogMetadata};
 use std::sync::mpsc;
+use log::{LogRecord, LogLevel, LogMetadata};
+use colored::*;
 use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
 use sodiumoxide::crypto::secretbox;
 use sodiumoxide::crypto::secretbox::xsalsa20poly1305::Key;
@@ -42,14 +44,15 @@ macro_rules! overprint {
     };
 }
 
+#[macro_export]
 macro_rules! die {
     ($fmt: expr) => {
         error!($fmt);
-        panic!($fmt);
+        panic!($fmt)
     };
     ($fmt:expr, $($arg:tt)*) => {
         error!($fmt, $($arg)*);
-        panic!($fmt, $($arg)*);
+        panic!($fmt, $($arg)*)
     };
 }
 
@@ -80,8 +83,15 @@ impl log::Log for ShoopLogger {
 
     fn log(&self, record: &LogRecord) {
         if self.enabled(record.metadata()) {
-            let line = format!("{} - {}\n", record.level(), record.args());
-            print!("{}", line);
+            let prefix_symbol = match record.level() {
+                LogLevel::Error => "E".red().bold(),
+                LogLevel::Warn  => "W".yellow().bold(),
+                LogLevel::Info  => "I".normal(),
+                LogLevel::Debug => "D".dimmed(),
+                LogLevel::Trace => "T".dimmed(),
+            };
+
+            println!("[{}] {}", prefix_symbol, record.args());
         }
     }
 }
@@ -172,8 +182,7 @@ impl<'a> Server<'a> {
                             continue;
                         }
                         Err(ShoopErr{ kind: ShoopErrKind::Fatal, msg, finished}) => {
-                            info!("connection fatal, msg: {:?}, finished: {}", msg, finished);
-                            panic!("{:?}", msg);
+                            die!("connection fatal, msg: {:?}, finished: {}", msg, finished);
                         }
                     }
                 } else {
@@ -219,8 +228,7 @@ impl<'a> Server<'a> {
                 },
                 Err(e) => {
                     client.close().expect("Error closing stream");
-                    error!("failed to read from file.");
-                    panic!("{:?}", e);
+                    die!("failed to read from file: {:?}", e);
                 }
             }
         }
@@ -245,18 +253,18 @@ pub fn download(remote_ssh_host : &str,
                          .arg(cmd)
                          .output()
                          .unwrap_or_else(|e| {
-                             panic!("failed to execute process: {}", e);
+                             die!("failed to execute process: {}", e);
                          });
     let infostring = String::from_utf8_lossy(&output.stdout).to_owned().trim().to_owned();
     let info: Vec<&str> = infostring.split(" ").collect();
     if info.len() != 5 {
-        panic!("Unexpected response from server. Are you suuuuure shoop is setup on the server?");
+        die!("Unexpected response from server. Are you suuuuure shoop is setup on the server?");
     }
 
     let (magic, version, ip, port, keyhex) = (info[0], info[1], info[2], info[3], info[4]);
     overprint!(" - opening UDT connection...");
     if magic != "shoop" || version != "0" {
-        panic!("Unexpected response from server. Are you suuuuure shoop is setup on the server?");
+        die!("Unexpected response from server. Are you suuuuure shoop is setup on the server?");
     }
 
     let mut keybytes = [0u8; 32];
@@ -274,7 +282,7 @@ pub fn download(remote_ssh_host : &str,
                 overprint!(" - connection opened, shakin' hands, makin' frands");
             },
             Err(e) => {
-                panic!("errrrrrrr connecting to {}:{} - {:?}", ip, port, e);
+                die!("errrrrrrr connecting to {}:{} - {:?}", ip, port, e);
             }
         }
         let mut wtr = vec![];
@@ -288,21 +296,21 @@ pub fn download(remote_ssh_host : &str,
         match conn.recv() {
             Ok(msg) => {
                 if msg.len() == 0 {
-                    panic!("failed to get filesize from server, probable timeout.");
+                    die!("failed to get filesize from server, probable timeout.");
                 }
                 let mut rdr = Cursor::new(msg);
                 filesize = filesize.or(Some(rdr.read_u64::<LittleEndian>().unwrap()));
-                overprint!(" + downloading {} ({:.1}MB)\n", local_path.to_string_lossy(), (filesize.unwrap() as f64)/(1024f64*1024f64));
+                overprint!("downloading {} ({:.1}MB)\n", local_path.to_string_lossy(), (filesize.unwrap() as f64)/(1024f64*1024f64));
                 match recv_file(&conn, filesize.unwrap(), &local_path, offset) {
                      Ok(_) => {
                          break;
                      }
                      Err(ShoopErr{ kind: ShoopErrKind::Severed, msg: _, finished}) => {
-                         println!(" * [[SEVERED]]");
+                         println!("{}", " * [[SEVERED]]".yellow().bold());
                          offset = finished;
                      }
                      Err(ShoopErr{ kind: ShoopErrKind::Fatal, msg, finished: _}) => {
-                         panic!("{:?}", msg);
+                         die!("{:?}", msg);
                      }
                 }
             }
@@ -319,7 +327,7 @@ pub fn download(remote_ssh_host : &str,
     } else {
         format!("{}h{}m{}s", elapsed / (60 * 60), elapsed / 60, elapsed % 60)
     };
-    println!("shooped it all up in {}", fmt_time);
+    println!("shooped it all up in {}", fmt_time.green().bold());
 }
 
 fn command_exists(command: &str) -> bool {
@@ -366,8 +374,7 @@ fn recv_file(conn: &connection::Client, filesize: u64, filename: &PathBuf, offse
             ts = Instant::now();
         }
         if total >= filesize {
-            overprint!("   {0:.1}M / {0:.1}M (100%) [ avg {1:.1} MB/s ]", (filesize as f64)/(1024f64*1024f64), ((total - offset) / start.elapsed().as_secs() / 1024) as f64 / 1024f64);
-            println!("\ndone.");
+            overprint!("   {0:.1}M / {0:.1}M (100%) [ avg {1:.1} MB/s ]\n", (filesize as f64)/(1024f64*1024f64), ((total - offset) / start.elapsed().as_secs() / 1024) as f64 / 1024f64);
             break;
         }
     }

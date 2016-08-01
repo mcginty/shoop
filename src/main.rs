@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate log;
 extern crate getopts;
+#[macro_use]
 extern crate shoop;
 
 use std::str;
@@ -79,7 +80,7 @@ fn main() {
             let remote_path = Path::new(remote_path_str);
             let remote_file_name = match remote_path.file_name() {
                 Some(s) => s,
-                None => panic!("The remote path specified doesn't look like a path to a file.")
+                None => { die!("The remote path specified doesn't look like a path to a file."); }
             };
 
             let output = if matches.free.len() > 1 {

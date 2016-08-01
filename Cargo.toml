@@ -31,4 +31,5 @@ sodiumoxide = "0.0.12"
 rustc-serialize = "^0.3"
 time = "^0.1"
 udt = "^0.1"
+colored = "1.3"
 
