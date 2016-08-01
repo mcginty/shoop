@@ -1,7 +1,8 @@
 #[macro_use]
 extern crate log;
 extern crate getopts;
-extern crate daemonize;
+// extern crate daemonize;
+extern crate unix_daemonize;
 extern crate byteorder;
 extern crate udt;
 extern crate time;
@@ -10,7 +11,8 @@ extern crate rustc_serialize;
 
 pub mod connection;
 
-use daemonize::{Daemonize};
+// use daemonize::{Daemonize};
+use unix_daemonize::{daemonize_redirect, ChdirMode};
 use std::process::Command;
 use std::net::{SocketAddr, SocketAddrV4, IpAddr};
 use std::str;
@@ -125,11 +127,14 @@ impl<'a> Server<'a> {
         let Key(keybytes) = key;
         let conn = connection::Server::new(IpAddr::from_str(&ip).unwrap(), port_range, key);
         println!("shoop 0 {} {} {}", ip, conn.port, keybytes.to_hex());
-        let daemonize = Daemonize::new();
-        match daemonize.start() {
-            Ok(_) => { let _ = info!("daemonized"); }
-            Err(_) => { let _ = error!("RWRWARWARARRR"); }
-        }
+
+        daemonize_redirect(Some("/tmp/stdout.log"), Some("/tmp/stderr.log"), ChdirMode::ChdirRoot).unwrap();
+        //
+        // let daemonize = Daemonize::new();
+        // match daemonize.start() {
+        //     Ok(_) => { let _ = info!("daemonized"); }
+        //     Err(_) => { let _ = error!("RWRWARWARARRR"); }
+        // }
         Server { ip: ip, conn: conn, filename: filename }
     }
 
