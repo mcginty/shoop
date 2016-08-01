@@ -25,12 +25,7 @@ The server-side and client-side use the same binary (at least for now). Follow t
 3. `cargo install shoop`
 
 ### server
-On the server-side, make sure that "shoop" is somewhere in your PATH. There's no `make install` right now, but for example on my server, I just did a quick:
-```
-ln -s $HOME/git/shoop/target/release/shoop /usr/local/bin/shoop
-```
-
-Also, if you have a firewall, the default port range shoop uses is 55000-55050 (if you want 50 simultaneous connections). In Ubuntu this might look like:
+If you have a firewall, the default port range shoop uses is 55000-55050 (if you want 50 simultaneous connections). In Ubuntu this might look like:
 ```
 sudo ufw allow 55000:55010/udp
 ```
