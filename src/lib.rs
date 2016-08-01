@@ -197,7 +197,9 @@ impl<'a> Server<'a> {
         let mut wtr = vec![];
         wtr.write_u64::<LittleEndian>(remaining).unwrap();
         match client.send(&wtr[..]) {
-            Ok(()) => { info!("wrote filesize header.") },
+            Ok(()) => {
+                info!("wrote filesize header.")
+            },
             Err(e) => {
                 return Err(ShoopErr::new(ShoopErrKind::Severed, &format!("{:?}", e), remaining))
             }
@@ -211,11 +213,8 @@ impl<'a> Server<'a> {
                     break;
                 }
                 Ok(read) => {
-                    match client.send(&payload[0..read]) {
-                        Ok(()) => { },
-                        Err(e) => {
-                            return Err(ShoopErr::new(ShoopErrKind::Severed, &format!("{:?}", e), remaining))
-                        }
+                    if let Err(e) = client.send(&payload[0..read]) {
+                        return Err(ShoopErr::new(ShoopErrKind::Severed, &format!("{:?}", e), remaining))
                     }
                 },
                 Err(e) => {
