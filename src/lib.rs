@@ -1,7 +1,6 @@
 #[macro_use]
 extern crate log;
 extern crate getopts;
-// extern crate daemonize;
 extern crate unix_daemonize;
 extern crate byteorder;
 extern crate udt;
@@ -11,7 +10,6 @@ extern crate rustc_serialize;
 
 pub mod connection;
 
-// use daemonize::{Daemonize};
 use unix_daemonize::{daemonize_redirect, ChdirMode};
 use std::process::Command;
 use std::net::{SocketAddr, SocketAddrV4, IpAddr};
@@ -82,12 +80,8 @@ impl log::Log for ShoopLogger {
 
     fn log(&self, record: &LogRecord) {
         if self.enabled(record.metadata()) {
-            let logpath = Path::new(&env::var("HOME").unwrap()).join(".shoop.log");
-            let mut f = OpenOptions::new().append(true).create(true).open(logpath).expect("failed to open logfile");
             let line = format!("{} - {}\n", record.level(), record.args());
             print!("{}", line);
-            let _ = f.write_all(&line.into_bytes()[..]);
-            let _ = std::io::stdout().flush();
         }
     }
 }
@@ -125,16 +119,16 @@ impl<'a> Server<'a> {
         let ip = sshconn[2].to_owned();
         let key = secretbox::gen_key();
         let Key(keybytes) = key;
-        let conn = connection::Server::new(IpAddr::from_str(&ip).unwrap(), port_range, key);
-        println!("shoop 0 {} {} {}", ip, conn.port, keybytes.to_hex());
+        let port = connection::Server::get_open_port(&port_range).unwrap();
+        println!("shoop 0 {} {} {}", ip, port, keybytes.to_hex());
 
-        daemonize_redirect(Some("/tmp/stdout.log"), Some("/tmp/stderr.log"), ChdirMode::ChdirRoot).unwrap();
-        //
-        // let daemonize = Daemonize::new();
-        // match daemonize.start() {
-        //     Ok(_) => { let _ = info!("daemonized"); }
-        //     Err(_) => { let _ = error!("RWRWARWARARRR"); }
-        // }
+        let stdout = Path::new(&env::var("HOME").unwrap()).join(".shoop.access.log");
+        let stderr = Path::new(&env::var("HOME").unwrap()).join(".shoop.err.log");
+        daemonize_redirect(Some(stdout),
+                           Some(stderr),
+                           ChdirMode::ChdirRoot).unwrap();
+
+        let conn = connection::Server::new(IpAddr::from_str(&ip).unwrap(), port, key);
         Server { ip: ip, conn: conn, filename: filename }
     }
 

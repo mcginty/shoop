@@ -112,15 +112,13 @@ impl Server {
         Err(())
     }
 
-    pub fn new(ip_addr: IpAddr, port_range: PortRange, key: Key) -> Server {
+    pub fn new(ip_addr: IpAddr, port: u16, key: Key) -> Server {
         let sock = new_udt_socket();
-
-        let port = Server::get_open_port(&port_range).unwrap();
+        sock.bind(SocketAddr::new(ip_addr, port)).unwrap();
         Server{ sock: sock, ip_addr: ip_addr, port: port, key: key }
     }
 
     pub fn listen(&self) -> Result<(), UdtError> {
-        self.sock.bind(SocketAddr::new(self.ip_addr, self.port)).unwrap();
         self.sock.listen(1)
     }
 
