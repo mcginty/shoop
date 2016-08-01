@@ -197,9 +197,7 @@ impl<'a> Server<'a> {
         let mut wtr = vec![];
         wtr.write_u64::<LittleEndian>(remaining).unwrap();
         match client.send(&wtr[..]) {
-            Ok(()) => {
-                return Err(ShoopErr::new(ShoopErrKind::Severed, "failed to write filesize header before timeout", remaining))
-            },
+            Ok(()) => { info!("wrote filesize header.") },
             Err(e) => {
                 return Err(ShoopErr::new(ShoopErrKind::Severed, &format!("{:?}", e), remaining))
             }
@@ -214,9 +212,7 @@ impl<'a> Server<'a> {
                 }
                 Ok(read) => {
                     match client.send(&payload[0..read]) {
-                        Ok(()) => {
-                            return Err(ShoopErr::new(ShoopErrKind::Severed, "failed to write filesize header before timeout", remaining))
-                        },
+                        Ok(()) => { },
                         Err(e) => {
                             return Err(ShoopErr::new(ShoopErrKind::Severed, &format!("{:?}", e), remaining))
                         }
