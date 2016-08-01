@@ -15,7 +15,8 @@ mod crypto {
     use sodiumoxide::crypto::secretbox::xsalsa20poly1305::{NONCEBYTES, Key, Nonce};
 
     pub fn seal(buf: &[u8], key: &Key) -> Vec<u8> {
-        assert!(NONCEBYTES < u8::max_value() as usize, "Uh, why is the nonce size this big?");
+        assert!(NONCEBYTES < u8::max_value() as usize,
+                "Uh, why is the nonce size this big?");
 
         let nonce = secretbox::gen_nonce();
         let Nonce(noncebytes) = nonce;
@@ -23,7 +24,7 @@ mod crypto {
         hdr[0] = NONCEBYTES as u8;
         hdr[1..].clone_from_slice(&noncebytes);
 
-        let mut sealed = secretbox::seal(&buf[..], &nonce, &key);
+        let mut sealed = secretbox::seal(&buf[..], &nonce, key);
         let mut msg = Vec::with_capacity(hdr.len() + sealed.len());
         msg.extend_from_slice(&hdr);
         msg.append(&mut sealed);
@@ -39,16 +40,17 @@ mod crypto {
             return Err(String::from("msg not long enough to contain nonce"));
         }
         let mut noncebytes = [0u8; NONCEBYTES];
-        noncebytes.copy_from_slice(&buf[1..1+noncelen]);
+        noncebytes.copy_from_slice(&buf[1..1 + noncelen]);
         let nonce = Nonce(noncebytes);
 
-        secretbox::open(&buf[1+noncelen..], &nonce, &key).map_err(|_| String::from("failed to decrypt"))
+        secretbox::open(&buf[1 + noncelen..], &nonce, key)
+            .map_err(|_| String::from("failed to decrypt"))
     }
 }
 
 pub struct PortRange {
     start: u16,
-    end: u16
+    end: u16,
 }
 
 pub struct Server {
@@ -59,11 +61,11 @@ pub struct Server {
 }
 
 fn new_udt_socket() -> UdtSocket {
-        udt::init();
-        let sock = UdtSocket::new(SocketFamily::AFInet, SocketType::Datagram).unwrap();
-        sock.setsockopt(UdtOpts::UDP_RCVBUF, UDT_BUF_SIZE).unwrap();
-        sock.setsockopt(UdtOpts::UDP_SNDBUF, UDT_BUF_SIZE).unwrap();
-        sock
+    udt::init();
+    let sock = UdtSocket::new(SocketFamily::AFInet, SocketType::Datagram).unwrap();
+    sock.setsockopt(UdtOpts::UDP_RCVBUF, UDT_BUF_SIZE).unwrap();
+    sock.setsockopt(UdtOpts::UDP_SNDBUF, UDT_BUF_SIZE).unwrap();
+    sock
 }
 
 pub struct Client {
@@ -80,7 +82,11 @@ pub struct ServerConnection<'a> {
 impl Client {
     pub fn new(addr: SocketAddr, key: Key) -> Client {
         let sock = new_udt_socket();
-        Client{ addr: addr, sock: sock, key: key }
+        Client {
+            addr: addr,
+            sock: sock,
+            key: key,
+        }
     }
 
     pub fn connect(&self) -> Result<(), UdtError> {
@@ -93,8 +99,12 @@ impl Client {
     }
 
     pub fn recv(&self) -> Result<Vec<u8>, UdtError> {
-        crypto::open(&try!(self.sock.recvmsg(MAX_MESSAGE_SIZE))[..], &self.key)
-               .map_err(|_| UdtError{ err_code: -1, err_msg: String::from("decryption failure") })
+        crypto::open(&try!(self.sock.recvmsg(MAX_MESSAGE_SIZE))[..], &self.key).map_err(|_| {
+            UdtError {
+                err_code: -1,
+                err_msg: String::from("decryption failure"),
+            }
+        })
     }
 
     pub fn close(&self) -> Result<(), UdtError> {
@@ -115,7 +125,12 @@ impl Server {
     pub fn new(ip_addr: IpAddr, port: u16, key: Key) -> Server {
         let sock = new_udt_socket();
         sock.bind(SocketAddr::new(ip_addr, port)).unwrap();
-        Server{ sock: sock, ip_addr: ip_addr, port: port, key: key }
+        Server {
+            sock: sock,
+            ip_addr: ip_addr,
+            port: port,
+            key: key,
+        }
     }
 
     pub fn listen(&self) -> Result<(), UdtError> {
@@ -123,7 +138,12 @@ impl Server {
     }
 
     pub fn accept(&self) -> Result<ServerConnection, UdtError> {
-        self.sock.accept().map(|(sock, _)| ServerConnection{ key: &self.key, sock: sock })
+        self.sock.accept().map(|(sock, _)| {
+            ServerConnection {
+                key: &self.key,
+                sock: sock,
+            }
+        })
     }
 }
 
@@ -134,8 +154,12 @@ impl<'a> ServerConnection<'a> {
     }
 
     pub fn recv(&self) -> Result<Vec<u8>, UdtError> {
-        crypto::open(&try!(self.sock.recvmsg(MAX_MESSAGE_SIZE))[..], &self.key)
-               .map_err(|_| UdtError{ err_code: -1, err_msg: String::from("decryption failure") })
+        crypto::open(&try!(self.sock.recvmsg(MAX_MESSAGE_SIZE))[..], self.key).map_err(|_| {
+            UdtError {
+                err_code: -1,
+                err_msg: String::from("decryption failure"),
+            }
+        })
     }
 
     pub fn close(&self) -> Result<(), UdtError> {
@@ -148,17 +172,19 @@ impl<'a> PortRange {
         if start > end {
             Err("range end must be greater than or equal to start")
         } else {
-            Ok(PortRange{ start: start, end: end })
+            Ok(PortRange {
+                start: start,
+                end: end,
+            })
         }
     }
 
     pub fn from(s: &str) -> Result<PortRange, &'a str> {
-        let sections: Vec<&str> = s.split("-").collect();
+        let sections: Vec<&str> = s.split('-').collect();
         if sections.len() != 2 {
-            return Err("Range must be specified in the form of \"<start>-<end>\"")
+            return Err("Range must be specified in the form of \"<start>-<end>\"");
         }
-        let (start, end) = (sections[0].parse::<u16>(),
-                            sections[1].parse::<u16>());
+        let (start, end) = (sections[0].parse::<u16>(), sections[1].parse::<u16>());
         if start.is_err() || end.is_err() {
             return Err("improperly formatted port range");
         }
