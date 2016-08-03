@@ -9,6 +9,10 @@ extern crate sodiumoxide;
 extern crate rustc_serialize;
 extern crate colored;
 
+// crates needed for unit tests
+#[cfg(test)]
+extern crate rand;
+
 pub mod connection;
 
 use unix_daemonize::{daemonize_redirect, ChdirMode};
