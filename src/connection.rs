@@ -158,11 +158,11 @@ impl Server {
 
 impl<'a> ServerConnection<'a> {
     pub fn send(&self, buf: &[u8]) -> Result<(), UdtError> {
-        send(&self.sock, &self.key, buf)
+        send(&self.sock, self.key, buf)
     }
 
     pub fn recv(&self) -> Result<Vec<u8>, UdtError> {
-        recv(&self.sock, &self.key)
+        recv(&self.sock, self.key)
     }
 
     pub fn close(&self) -> Result<(), UdtError> {
