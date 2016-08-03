@@ -1,3 +1,4 @@
+#![cfg_attr(all(feature = "nightly", test), feature(test))]
 #[macro_use]
 extern crate log;
 extern crate getopts;

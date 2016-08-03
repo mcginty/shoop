@@ -4,6 +4,7 @@ version = "0.0.1-prealpha.2"
 authors = ["Jake McGinty <me@jake.su>"]
 description = "Shoop is a high-speed encrypted file transfer tool reminiscent of scp. It uses SSH to bootstrap authentication and encryption, then uses UDT (a reliable protocol from the 2000s) instead of TCP (a reliable protocol from the 1970s)."
 keywords = ["scp", "transfer", "encrypted", "secure", "file"]
+build = "build.rs"
 homepage = "https://github.com/mcginty/shoop"
 repository = "https://github.com/mcginty/shoop"
 readme = "README.md"
@@ -14,6 +15,9 @@ include = [
   "Cargo.toml",
 ]
 
+[features]
+nightly = []
+
 [lib]
 name = "shoop"
 path = "src/lib.rs"
@@ -21,6 +25,9 @@ path = "src/lib.rs"
 [[bin]]
 name = "shoop"
 path = "src/main.rs"
+
+[build-dependencies]
+rustc_version = "^0.1"
 
 [dependencies]
 log = "^0.3"

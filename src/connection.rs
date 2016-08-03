@@ -103,6 +103,24 @@ mod crypto {
             }
         }
     }
+
+    #[cfg(all(feature = "nightly", test))]
+    mod bench {
+        extern crate test;
+
+        #[bench]
+        fn bench_seal(b: &mut test::Bencher) {
+            use sodiumoxide::crypto::secretbox;
+            let key = secretbox::gen_key();
+            b.iter(move || super::seal(&[0; 1300], &key))
+        }
+
+        #[bench]
+        fn bench_gen_key(b: &mut test::Bencher) {
+            use sodiumoxide::crypto::secretbox;
+            b.iter(|| secretbox::gen_key());
+        }
+    }
 }
 
 fn new_udt_socket() -> UdtSocket {
