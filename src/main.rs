@@ -15,21 +15,15 @@ const DEFAULT_PORT_RANGE: &'static str = "55000-55050";
 
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Shoop is a ultrafast, (hopefully) secure file transfer tool, that is
-\
-                         (hopefully) ideal for transferring large files.
+(hopefully) ideal for transferring large files.
 
-Usage: {0} [options] \
-                         HOST:PATH DEST
+Usage: {0} [options] HOST:PATH DEST
 ...where HOST is an SSH host
-...where PATH is the path \
-                         on the *remote* machine of the file you want
-...where DEST is either an \
-                         existing folder or a location for the new
-                 file (\".\" \
-                         by default)
+...where PATH is the path on the *remote* machine of the file you want
+...where DEST is either an existing folder or a location for the new
+                 file (\".\" by default)
 
-Example: {0} \
-                         seedbox.facebook.com:/home/zuck/internalized_sadness.zip .",
+Example: {0} seedbox.facebook.com:/home/zuck/internalized_sadness.zip .",
                         program);
     print!("{}", opts.usage(&brief));
 }
