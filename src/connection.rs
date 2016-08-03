@@ -47,6 +47,32 @@ mod crypto {
             .map_err(|_| String::from("failed to decrypt"))
     }
 
+    // Tests for the crypto module
+    #[cfg(test)]
+    mod test {
+        use ::rand;
+        use ::rand::distributions::{IndependentSample, Range};
+
+        #[test]
+        fn roundtrip() {
+            use sodiumoxide::crypto::secretbox;
+            // generate some data, seal it, and then make sure it unseals to the same thing
+            let mut rng = rand::thread_rng();
+            let between = Range::new(10, 10000);
+
+
+            let key = secretbox::gen_key();
+            let data_size: usize = between.ind_sample(&mut rng);
+            let mut data = Vec::with_capacity(data_size);
+            for _ in 0..data_size {
+                data.push(rand::random());
+            }
+
+            let cipher_text = super::seal(&data, &key);
+            let decrypted_text = super::open(&cipher_text, &key).unwrap();
+            assert_eq!(decrypted_text, data);
+        }
+    }
 }
 
 fn new_udt_socket() -> UdtSocket {
