@@ -46,6 +46,29 @@ mod crypto {
         secretbox::open(&buf[1 + noncelen..], &nonce, key)
             .map_err(|_| String::from("failed to decrypt"))
     }
+
+}
+
+fn new_udt_socket() -> UdtSocket {
+    udt::init();
+    let sock = UdtSocket::new(SocketFamily::AFInet, SocketType::Datagram).unwrap();
+    sock.setsockopt(UdtOpts::UDP_RCVBUF, UDT_BUF_SIZE).unwrap();
+    sock.setsockopt(UdtOpts::UDP_SNDBUF, UDT_BUF_SIZE).unwrap();
+    sock
+}
+
+fn send(sock: &UdtSocket, key: &Key, buf: &[u8]) -> Result<(), UdtError> {
+    // FIXME don't unwrap, create an Error struct that can handle everything
+    sock.sendmsg(&crypto::seal(buf, key)[..]).map(|_| ())
+}
+
+fn recv(sock: &UdtSocket, key: &Key) -> Result<Vec<u8>, UdtError> {
+    crypto::open(&try!(sock.recvmsg(MAX_MESSAGE_SIZE))[..], key).map_err(|_| {
+        UdtError {
+            err_code: -1,
+            err_msg: String::from("decryption failure"),
+        }
+    })
 }
 
 pub struct PortRange {
@@ -58,14 +81,6 @@ pub struct Server {
     pub port: u16,
     key: Key,
     sock: UdtSocket,
-}
-
-fn new_udt_socket() -> UdtSocket {
-    udt::init();
-    let sock = UdtSocket::new(SocketFamily::AFInet, SocketType::Datagram).unwrap();
-    sock.setsockopt(UdtOpts::UDP_RCVBUF, UDT_BUF_SIZE).unwrap();
-    sock.setsockopt(UdtOpts::UDP_SNDBUF, UDT_BUF_SIZE).unwrap();
-    sock
 }
 
 pub struct Client {
@@ -94,17 +109,11 @@ impl Client {
     }
 
     pub fn send(&self, buf: &[u8]) -> Result<(), UdtError> {
-        // FIXME don't unwrap, create an Error struct that can handle everything
-        self.sock.sendmsg(&crypto::seal(buf, &self.key)[..]).map(|_| ())
+        send(&self.sock, &self.key, buf)
     }
 
     pub fn recv(&self) -> Result<Vec<u8>, UdtError> {
-        crypto::open(&try!(self.sock.recvmsg(MAX_MESSAGE_SIZE))[..], &self.key).map_err(|_| {
-            UdtError {
-                err_code: -1,
-                err_msg: String::from("decryption failure"),
-            }
-        })
+        recv(&self.sock, &self.key)
     }
 
     pub fn close(&self) -> Result<(), UdtError> {
@@ -149,17 +158,11 @@ impl Server {
 
 impl<'a> ServerConnection<'a> {
     pub fn send(&self, buf: &[u8]) -> Result<(), UdtError> {
-        // FIXME don't unwrap, create an Error struct that can handle everything
-        self.sock.sendmsg(&crypto::seal(buf, self.key)[..]).map(|_| ())
+        send(&self.sock, &self.key, buf)
     }
 
     pub fn recv(&self) -> Result<Vec<u8>, UdtError> {
-        crypto::open(&try!(self.sock.recvmsg(MAX_MESSAGE_SIZE))[..], self.key).map_err(|_| {
-            UdtError {
-                err_code: -1,
-                err_msg: String::from("decryption failure"),
-            }
-        })
+        recv(&self.sock, &self.key)
     }
 
     pub fn close(&self) -> Result<(), UdtError> {
