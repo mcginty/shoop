@@ -13,7 +13,7 @@ pub mod connection;
 
 use unix_daemonize::{daemonize_redirect, ChdirMode};
 use std::process::Command;
-use std::net::{SocketAddr, SocketAddrV4, IpAddr};
+use std::net::{SocketAddr, IpAddr};
 use std::str;
 use std::env;
 use std::thread;
@@ -285,8 +285,8 @@ pub fn download(remote_ssh_host: &str,
     let mut keybytes = [0u8; 32];
     keybytes.copy_from_slice(&keyhex.from_hex().unwrap()[..]);
     let key = Key(keybytes);
-    let addr: SocketAddr = SocketAddr::V4(SocketAddrV4::from_str(&format!("{}:{}", ip, port)[..])
-        .unwrap());
+    let addr: SocketAddr = SocketAddr::from_str(&format!("{}:{}", ip, port)[..])
+        .unwrap();
     let conn = connection::Client::new(addr, key);
 
     let mut offset = 0u64;
