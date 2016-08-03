@@ -178,28 +178,22 @@ impl<'a> Server<'a> {
             tx.send(()).unwrap();
             info!("accepted connection!");
             if let Ok(starthdr) = client.recv() {
-                let version = starthdr[0];
                 let mut rdr = Cursor::new(starthdr);
-                rdr.set_position(1);
                 let offset = rdr.read_u64::<LittleEndian>().unwrap();
-                if version == 0x00 {
-                    match self.send_file(&client, offset) {
-                        Ok(_) => {
-                            info!("done sending file");
-                            let _ = client.close();
-                            break;
-                        }
-                        Err(ShoopErr { kind: ShoopErrKind::Severed, msg, finished }) => {
-                            info!("connection severed, msg: {:?}, finished: {}", msg, finished);
-                            let _ = client.close();
-                            continue;
-                        }
-                        Err(ShoopErr { kind: ShoopErrKind::Fatal, msg, finished }) => {
-                            die!("connection fatal, msg: {:?}, finished: {}", msg, finished);
-                        }
+                match self.send_file(&client, offset) {
+                    Ok(_) => {
+                        info!("done sending file");
+                        let _ = client.close();
+                        break;
                     }
-                } else {
-                    die!("unrecognized version");
+                    Err(ShoopErr { kind: ShoopErrKind::Severed, msg, finished }) => {
+                        info!("connection severed, msg: {:?}, finished: {}", msg, finished);
+                        let _ = client.close();
+                        continue;
+                    }
+                    Err(ShoopErr { kind: ShoopErrKind::Fatal, msg, finished }) => {
+                        die!("connection fatal, msg: {:?}, finished: {}", msg, finished);
+                    }
                 }
             } else {
                 die!("failed to receive version byte from client");
@@ -302,7 +296,6 @@ pub fn download(remote_ssh_host: &str,
             }
         }
         let mut wtr = vec![];
-        wtr.push(0);
         wtr.write_u64::<LittleEndian>(offset).unwrap();
         if let Err(_) = conn.send(&wtr[..]) {
             conn.close().unwrap();
