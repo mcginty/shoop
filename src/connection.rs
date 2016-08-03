@@ -72,6 +72,36 @@ mod crypto {
             let decrypted_text = super::open(&cipher_text, &key).unwrap();
             assert_eq!(decrypted_text, data);
         }
+
+        #[test]
+        fn key_sanity() {
+            use std::collections::HashSet;
+            use sodiumoxide::crypto::secretbox;
+            use sodiumoxide::crypto::secretbox::xsalsa20poly1305::Key;
+
+            let mut set: HashSet<[u8;32]> = HashSet::with_capacity(10000);
+
+            for _ in 0..10000 {
+                let key = secretbox::gen_key();
+                let Key(keybytes) = key;
+                assert!(set.insert(keybytes));
+            }
+        }
+
+        #[test]
+        fn nonce_sanity() {
+            use std::collections::HashSet;
+            use sodiumoxide::crypto::secretbox;
+            use sodiumoxide::crypto::secretbox::xsalsa20poly1305::Nonce;
+
+            let mut set: HashSet<[u8;24]> = HashSet::with_capacity(10000);
+
+            for _ in 0..10000 {
+                let nonce = secretbox::gen_nonce();
+                let Nonce(noncebytes) = nonce;
+                assert!(set.insert(noncebytes));
+            }
+        }
     }
 }
 
