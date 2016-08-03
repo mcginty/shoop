@@ -177,35 +177,32 @@ impl<'a> Server<'a> {
             connection_count += 1;
             tx.send(()).unwrap();
             info!("accepted connection!");
-            if let Ok(starthdr) = client.recv() {
-                let mut rdr = Cursor::new(starthdr);
-                let offset = rdr.read_u64::<LittleEndian>().unwrap();
-                match self.send_file(&client, offset) {
-                    Ok(_) => {
-                        info!("done sending file");
-                        let _ = client.close();
-                        break;
-                    }
-                    Err(ShoopErr { kind: ShoopErrKind::Severed, msg, finished }) => {
-                        info!("connection severed, msg: {:?}, finished: {}", msg, finished);
-                        let _ = client.close();
-                        continue;
-                    }
-                    Err(ShoopErr { kind: ShoopErrKind::Fatal, msg, finished }) => {
-                        die!("connection fatal, msg: {:?}, finished: {}", msg, finished);
-                    }
+            match self.send_file(&client) {
+                Ok(_) => {
+                    info!("done sending file");
+                    let _ = client.close();
+                    break;
                 }
-            } else {
-                die!("failed to receive version byte from client");
+                Err(ShoopErr { kind: ShoopErrKind::Severed, msg, finished }) => {
+                    info!("connection severed, msg: {:?}, finished: {}", msg, finished);
+                    let _ = client.close();
+                    continue;
+                }
+                Err(ShoopErr { kind: ShoopErrKind::Fatal, msg, finished }) => {
+                    die!("connection fatal, msg: {:?}, finished: {}", msg, finished);
+                }
             }
         }
         info!("exiting listen loop.");
     }
 
-    fn send_file(&self,
-                 client: &connection::ServerConnection,
-                 offset: u64)
-                 -> Result<(), ShoopErr> {
+    fn send_file(&self, client: &connection::ServerConnection) -> Result<(), ShoopErr> {
+        let starthdr = match client.recv() {
+            Ok(hdr) => hdr,
+            Err(e) => return Err(ShoopErr::new(ShoopErrKind::Severed, &format!("{:?}", e), 0)),
+        };
+        let mut rdr = Cursor::new(starthdr);
+        let offset = rdr.read_u64::<LittleEndian>().unwrap();
         let mut f = File::open(self.filename).unwrap();
         f.seek(SeekFrom::Start(offset)).unwrap();
         let metadata = f.metadata().unwrap();
@@ -279,8 +276,7 @@ pub fn download(remote_ssh_host: &str,
     let mut keybytes = [0u8; 32];
     keybytes.copy_from_slice(&keyhex.from_hex().unwrap()[..]);
     let key = Key(keybytes);
-    let addr: SocketAddr = SocketAddr::from_str(&format!("{}:{}", ip, port)[..])
-        .unwrap();
+    let addr: SocketAddr = SocketAddr::from_str(&format!("{}:{}", ip, port)[..]).unwrap();
     let conn = connection::Client::new(addr, key);
 
     let mut offset = 0u64;
