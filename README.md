@@ -1,4 +1,4 @@
-# 🏎🏎🏎  shoop  🏎🏎🏎
+# 🏎🏎🏎  shoop  🏎🏎🏎   [![Build Status](https://travis-ci.org/mcginty/shoop.svg?branch=master)](https://travis-ci.org/mcginty/shoop)
 SCP for the modern era. If I were better at marketing I might call this "insanely" fast.
 
 # security and stability
