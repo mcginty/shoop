@@ -8,6 +8,9 @@ matrix:
   allow_failures:
     - rust: nightly
 sudo: false
+before_install:
+  - brew update
+  - brew install libsodium
 os:
-  - linux
+# - linux
   - osx
