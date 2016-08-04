@@ -11,6 +11,7 @@ use getopts::Options;
 use shoop::{ShoopLogger, Server, download};
 use shoop::connection::PortRange;
 
+const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 const DEFAULT_PORT_RANGE: &'static str = "55000-55050";
 
 fn print_usage(program: &str, opts: Options) {
@@ -69,6 +70,7 @@ fn main() {
                 DEFAULT_PORT_RANGE);
     opts.optflag("s", "server", "server mode (advanced usage only)");
     opts.optflag("h", "help", "print this help menu");
+    opts.optflag("v", "version", "print the version");
 
     let matches = match opts.parse(&args[1..]) {
         Ok(m) => m,
@@ -77,6 +79,11 @@ fn main() {
 
     if matches.opt_present("h") {
         print_usage(&program, opts);
+        return;
+    }
+
+    if matches.opt_present("v") {
+        println!("shoop {}", VERSION);
         return;
     }
 
