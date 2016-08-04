@@ -111,16 +111,17 @@ fn main() {
             };
 
             match Target::from(source) {
-                Target::Local(_) => panic!("Sorry, you can only copy *from* a remote host currently."),
+                Target::Local(_) => error!("Sorry, you can only copy *from* a remote host currently."),
                 Target::Remote(source_addr, source_path_str) => {
                     match Target::from(dest) {
-                        Target::Remote(_,_) => panic!("Sorry, you can only copy to a local path currently."),
+                        Target::Remote(_,_) => error!("Sorry, you can only copy to a local path currently."),
                         Target::Local(dest_path_str) => {
                             let source_path = Path::new(&source_path_str);
                             let source_file_name = match source_path.file_name() {
                                 Some(s) => s,
                                 None => {
-                                    die!("The remote path specified doesn't look like a path to a file.");
+                                    error!("The remote path specified doesn't look like a path to a file.");
+                                    std::process::exit(1);
                                 }
                             };
                             let dest_path = Path::new(&dest_path_str);
