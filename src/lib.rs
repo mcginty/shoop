@@ -322,7 +322,9 @@ pub fn download(remote_ssh_host: &str,
         });
     let response = String::from_utf8_lossy(&output.stdout).to_owned().trim().to_owned();
     if response.starts_with("shooperr ") {
-        let (code, msg) = response.split_at(response.find(' ').unwrap());
+        let errblock = &response["shooperr ".len()..];
+        let (code, msg) = errblock.split_at(errblock.find(' ').unwrap());
+        overprint!("");
         error!("Server error #{}:{}", code, msg);
         std::process::exit(1);
     }
