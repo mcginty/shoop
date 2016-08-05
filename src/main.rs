@@ -44,7 +44,7 @@ impl Target {
                 if first.contains('/') {
                     Target::Local(s)
                 } else {
-                    Target::Remote(String::from(first), String::from(second))
+                    Target::Remote(String::from(first), String::from(&second[1..]))
                 }
             }
         }
