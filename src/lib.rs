@@ -165,7 +165,7 @@ impl ShoopErr {
 impl<'a> Server<'a> {
     fn daemonize() {
         let stdout = Some(Path::new(&env::var("HOME").unwrap()).join(".shoop.log"));
-        let stderr = Some(Path::new(&env::var("HOME").unwrap()).join(".shoop.log"));
+        let stderr = stdout.clone();
         daemonize_redirect(stdout, stderr, ChdirMode::ChdirRoot).unwrap();
     }
 
