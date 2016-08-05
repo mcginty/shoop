@@ -242,6 +242,10 @@ impl<'a> ServerConnection<'a> {
     pub fn close(&self) -> Result<(), UdtError> {
         self.sock.close()
     }
+
+    pub fn getpeer(&self) -> Result<SocketAddr, UdtError> {
+        self.sock.getpeername()
+    }
 }
 
 impl<'a> PortRange {

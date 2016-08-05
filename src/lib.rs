@@ -1,6 +1,7 @@
 #![cfg_attr(all(feature = "nightly", test), feature(test))]
 #[macro_use]
 extern crate log;
+extern crate libc;
 extern crate getopts;
 extern crate unix_daemonize;
 extern crate byteorder;
@@ -19,9 +20,7 @@ pub mod connection;
 use unix_daemonize::{daemonize_redirect, ChdirMode};
 use std::process::Command;
 use std::net::{SocketAddr, IpAddr};
-use std::str;
-use std::env;
-use std::thread;
+use std::{str, env, thread, fmt};
 use std::str::FromStr;
 use std::fs::{OpenOptions, File};
 use std::path::{Path, PathBuf};
@@ -67,6 +66,32 @@ pub struct Server<'a> {
     conn: connection::Server,
 }
 
+#[derive(Clone, Copy)]
+pub enum ShoopMode {
+    Server,
+    Client,
+}
+
+#[derive(Clone, Copy)]
+pub enum ServerErr {
+    SshEnvMissing = 0,
+    FileMissing,
+}
+
+impl fmt::Display for ServerErr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let pretty = match self {
+            &ServerErr::SshEnvMissing => {
+                "SSH_CONNECTION env variable unset but required."
+            }
+            &ServerErr::FileMissing => {
+                "File doesn't exist, ya dingus."
+            }
+        };
+        write!(f, "{} {}", *self as i32, pretty)
+    }
+}
+
 #[allow(dead_code)]
 enum ShoopErrKind {
     Severed,
@@ -79,7 +104,10 @@ struct ShoopErr {
     finished: u64,
 }
 
-pub struct ShoopLogger;
+pub struct ShoopLogger {
+    pid: i32,
+    mode: ShoopMode,
+}
 
 impl log::Log for ShoopLogger {
     fn enabled(&self, metadata: &LogMetadata) -> bool {
@@ -96,16 +124,21 @@ impl log::Log for ShoopLogger {
                 LogLevel::Trace => "T".dimmed(),
             };
 
-            println!("[{}] {}", prefix_symbol, record.args());
+            let pidinfo = match self.mode {
+                ShoopMode::Server => format!("({}) ", self.pid),
+                ShoopMode::Client => String::new(),
+            };
+
+            println!("{}[{}] {}", pidinfo, prefix_symbol, record.args());
         }
     }
 }
 
 impl ShoopLogger {
-    pub fn init() -> Result<(), log::SetLoggerError> {
+    pub fn init(mode: ShoopMode) -> Result<(), log::SetLoggerError> {
         log::set_logger(|max_log_level| {
             max_log_level.set(log::LogLevelFilter::Info);
-            Box::new(ShoopLogger)
+            Box::new(ShoopLogger{ pid: unsafe { libc::getpid() }, mode: mode })
         })
     }
 }
@@ -130,29 +163,51 @@ impl ShoopErr {
 }
 
 impl<'a> Server<'a> {
-    pub fn new(port_range: connection::PortRange, filename: &str) -> Server {
-        let sshconnstr = match env::var("SSH_CONNECTION") {
-            Ok(s) => s.trim().to_owned(),
-            Err(_) => {
-                die!("SSH_CONNECTION env variable unset and required. Quitting.");
-            }
-        };
-        let sshconn: Vec<&str> = sshconnstr.split(' ').collect();
-        let ip = sshconn[2].to_owned();
-        let key = secretbox::gen_key();
-        let Key(keybytes) = key;
-        let port = connection::Server::get_open_port(&port_range).unwrap();
-        println!("shoop 0 {} {} {}", ip, port, keybytes.to_hex());
-
+    fn daemonize() {
         let stdout = Some(Path::new(&env::var("HOME").unwrap()).join(".shoop.log"));
         let stderr = Some(Path::new(&env::var("HOME").unwrap()).join(".shoop.log"));
         daemonize_redirect(stdout, stderr, ChdirMode::ChdirRoot).unwrap();
+    }
 
-        let conn = connection::Server::new(IpAddr::from_str(&ip).unwrap(), port, key);
-        Server {
-            ip: ip,
-            conn: conn,
-            filename: filename,
+    pub fn new(port_range: connection::PortRange, filename: &str) -> Result<Server, ServerErr> {
+        let mut err: Option<ServerErr> = None;
+        let sshconnstr = match env::var("SSH_CONNECTION") {
+            Ok(s) => s.trim().to_owned(),
+            Err(_) => {
+                err = Some(ServerErr::SshEnvMissing);
+                String::new()
+            }
+        };
+
+        if !Path::new(filename).is_file() {
+            err = Some(ServerErr::FileMissing);
+        }
+
+        match err {
+            None => {
+                let sshconn: Vec<&str> = sshconnstr.split(' ').collect();
+                let ip = sshconn[2].to_owned();
+                let key = secretbox::gen_key();
+                let Key(keybytes) = key;
+                let port = connection::Server::get_open_port(&port_range).unwrap();
+                println!("shoop 0 {} {} {}", ip, port, keybytes.to_hex());
+                Server::daemonize();
+                info!("got request: serve \"{}\" on range {}", filename, port_range);
+                info!("sent response: shoop 0 {} {} <key redacted>", ip, port);
+                let conn = connection::Server::new(IpAddr::from_str(&ip).unwrap(), port, key);
+                Ok(Server {
+                    ip: ip,
+                    conn: conn,
+                    filename: filename,
+                })
+            }
+            Some(e) => {
+                println!("shooperr {}", e);
+                Server::daemonize();
+                info!("got request: serve \"{}\" on range {}", filename, port_range);
+                error!("init error: {}", e);
+                Err(e)
+            }
         }
     }
 
@@ -176,12 +231,12 @@ impl<'a> Server<'a> {
             let client = match self.conn.accept() {
                 Ok(client) => client,
                 Err(e) => {
-                    die!("error on sock accept() {:?}", e);
+                    die!("unexpected error on sock accept() {:?}", e);
                 }
             };
             connection_count += 1;
             tx.send(()).unwrap();
-            info!("accepted connection!");
+            info!("accepted connection with {:?}!", client.getpeer());
             match self.send_file(&client) {
                 Ok(_) => {
                     info!("done sending file");
@@ -198,7 +253,7 @@ impl<'a> Server<'a> {
                 }
             }
         }
-        info!("exiting listen loop.");
+        info!("stopped listening.");
     }
 
     fn send_file(&self, client: &connection::ServerConnection) -> Result<(), ShoopErr> {
@@ -255,7 +310,6 @@ pub fn download(remote_ssh_host: &str,
                 remote_path: &str,
                 local_path: PathBuf) {
     let cmd = format!("shoop -s '{}' -p {}", remote_path, port_range);
-    // println!("addr: {}, path: {}, cmd: {}", addr, path, cmd);
 
     overprint!(" - establishing SSH session...");
     assert!(command_exists("ssh"), "`ssh` is required!");
@@ -266,8 +320,14 @@ pub fn download(remote_ssh_host: &str,
         .unwrap_or_else(|e| {
             die!("failed to execute process: {}", e);
         });
-    let infostring = String::from_utf8_lossy(&output.stdout).to_owned().trim().to_owned();
-    let info: Vec<&str> = infostring.split(' ').collect();
+    let response = String::from_utf8_lossy(&output.stdout).to_owned().trim().to_owned();
+    if response.starts_with("shooperr ") {
+        let (code, msg) = response.split_at(response.find(' ').unwrap());
+        error!("Server error #{}: {}", code, msg);
+        std::process::exit(1);
+    }
+
+    let info: Vec<&str> = response.split(' ').collect();
     if info.len() != 5 {
         die!("Unexpected response from server. Are you suuuuure shoop is setup on the server?");
     }

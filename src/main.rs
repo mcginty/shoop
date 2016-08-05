@@ -8,7 +8,7 @@ use std::str;
 use std::env;
 use std::path::Path;
 use getopts::Options;
-use shoop::{ShoopLogger, Server, download};
+use shoop::{ShoopLogger, ShoopMode, Server, download};
 use shoop::connection::PortRange;
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
@@ -52,12 +52,6 @@ impl Target {
 }
 
 fn main() {
-    enum Mode {
-        Server,
-        Client,
-    }
-    ShoopLogger::init().expect("Error starting shoop logger.");
-
     let args: Vec<String> = env::args().collect();
     let program = args[0].clone();
     let mut opts = Options::new();
@@ -94,10 +88,10 @@ fn main() {
         return;
     };
 
-    let mode: Mode = if matches.opt_present("s") {
-        Mode::Server
+    let mode = if matches.opt_present("s") {
+        ShoopMode::Server
     } else {
-        Mode::Client
+        ShoopMode::Client
     };
 
 
@@ -106,11 +100,16 @@ fn main() {
         PortRange::from(range_opt).unwrap()
     };
 
+    ShoopLogger::init(mode).expect("Error starting shoop logger.");
+
     match mode {
-        Mode::Server => {
-            Server::new(port_range, &source).start();
+        ShoopMode::Server => {
+            if let Ok(server) = Server::new(port_range, &source) {
+                server.start();
+                info!("exiting.");
+            }
         }
-        Mode::Client => {
+        ShoopMode::Client => {
             let dest = if matches.free.len() > 1 {
                 matches.free[1].clone()
             } else {
