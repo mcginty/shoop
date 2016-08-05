@@ -137,7 +137,7 @@ fn main() {
                                 dest_path.to_path_buf()
                             };
 
-                            download(&source_addr, port_range, &dest_path_str, final_dest_path);
+                            download(&source_addr, port_range, &source_path_str, final_dest_path);
                         }
                     }
                 }
