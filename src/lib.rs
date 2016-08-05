@@ -74,17 +74,18 @@ pub enum ShoopMode {
 
 #[derive(Clone, Copy)]
 pub enum ServerErr {
-    SshEnvMissing = 0,
-    FileMissing,
+    SshEnv = 0,
+    File,
 }
 
 impl fmt::Display for ServerErr {
+    #[allow(unknown_lints, match_ref_pats)]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let pretty = match self {
-            &ServerErr::SshEnvMissing => {
+         let pretty = match self {
+            &ServerErr::SshEnv => {
                 "SSH_CONNECTION env variable unset but required."
             }
-            &ServerErr::FileMissing => {
+            &ServerErr::File => {
                 "File doesn't exist, ya dingus."
             }
         };
@@ -174,13 +175,13 @@ impl<'a> Server<'a> {
         let sshconnstr = match env::var("SSH_CONNECTION") {
             Ok(s) => s.trim().to_owned(),
             Err(_) => {
-                err = Some(ServerErr::SshEnvMissing);
+                err = Some(ServerErr::SshEnv);
                 String::new()
             }
         };
 
         if !Path::new(filename).is_file() {
-            err = Some(ServerErr::FileMissing);
+            err = Some(ServerErr::File);
         }
 
         match err {
