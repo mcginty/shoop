@@ -1,6 +1,6 @@
 [package]
 name = "shoop"
-version = "0.0.1-prealpha.3"
+version = "0.0.1-prealpha.4"
 authors = ["Jake McGinty <me@jake.su>"]
 description = "Shoop is a high-speed encrypted file transfer tool reminiscent of scp. It uses SSH to bootstrap authentication and encryption, then uses UDT (a reliable protocol from the 2000s) instead of TCP (a reliable protocol from the 1970s)."
 keywords = ["scp", "transfer", "encrypted", "secure", "file"]
