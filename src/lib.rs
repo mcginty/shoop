@@ -518,7 +518,6 @@ impl Client {
 
         let mut keybytes = [0u8; 32];
         keybytes.copy_from_slice(&keyhex.from_hex().unwrap()[..]);
-        let key = Key(keybytes);
         let addr: SocketAddr = SocketAddr::from_str(&format!("{}:{}", ip, port)[..]).unwrap();
 
         let start_ts = Instant::now();
@@ -527,10 +526,10 @@ impl Client {
                 die!("send not supported");
             }
             TransferState::Receive(_, dest_path) => {
-                let conn = connection::Client::new(addr, key);
                 let mut offset = 0u64;
                 let mut filesize = None;
                 loop {
+                    let conn = connection::Client::new(addr, Key(keybytes));
                     match conn.connect() {
                         Ok(()) => {
                             overprint!(" - connection opened, shakin' hands, makin' frands");
