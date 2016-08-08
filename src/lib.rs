@@ -300,7 +300,7 @@ impl<'a> Server<'a> {
                 } else {
                     (RECONNECT_ACCEPT_TIMEOUT_SECONDS,
                      "reconnect")
-                }
+                };
                 thread::sleep(Duration::from_secs(timeout));
                 if let Err(_) = rx.try_recv() {
                     error!("timed out waiting for {}. exiting.",
