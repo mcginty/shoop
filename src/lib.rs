@@ -37,6 +37,7 @@ use rustc_serialize::hex::{FromHex, ToHex};
 
 // TODO config
 const INITIAL_ACCEPT_TIMEOUT_SECONDS: u64 = 60;
+const RECONNECT_ACCEPT_TIMEOUT_SECONDS: u64 = 21600;
 
 macro_rules! overprint {
     ($fmt: expr) => {
@@ -292,15 +293,18 @@ impl<'a> Server<'a> {
         loop {
             info!("waiting for connection...");
             let (tx, rx) = mpsc::channel();
-            if connection_count == 0 {
-                thread::spawn(move || {
-                    thread::sleep(Duration::from_secs(INITIAL_ACCEPT_TIMEOUT_SECONDS));
-                    if let Err(_) = rx.try_recv() {
-                        error!("timed out waiting for initial connection. exiting.");
-                        std::process::exit(1);
-                    }
-                });
-            }
+            thread::spawn(move || {
+                let timeout = if connection_count == 0 {
+                    INITIAL_ACCEPT_TIMEOUT_SECONDS
+                } else {
+                    RECONNECT_ACCEPT_TIMEOUT_SECONDS
+                }
+                thread::sleep(Duration::from_secs(timeout));
+                if let Err(_) = rx.try_recv() {
+                    error!("timed out waiting for initial connection. exiting.");
+                    std::process::exit(1);
+                }
+            });
             let client = match self.conn.accept() {
                 Ok(client) => client,
                 Err(e) => {
