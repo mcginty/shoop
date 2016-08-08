@@ -294,14 +294,17 @@ impl<'a> Server<'a> {
             info!("waiting for connection...");
             let (tx, rx) = mpsc::channel();
             thread::spawn(move || {
-                let timeout = if connection_count == 0 {
-                    INITIAL_ACCEPT_TIMEOUT_SECONDS
+                let (timeout, err) = if connection_count == 0 {
+                    (INITIAL_ACCEPT_TIMEOUT_SECONDS,
+                     "initial connection")
                 } else {
-                    RECONNECT_ACCEPT_TIMEOUT_SECONDS
+                    (RECONNECT_ACCEPT_TIMEOUT_SECONDS,
+                     "reconnect")
                 }
                 thread::sleep(Duration::from_secs(timeout));
                 if let Err(_) = rx.try_recv() {
-                    error!("timed out waiting for initial connection. exiting.");
+                    error!("timed out waiting for {}. exiting.",
+                           err);
                     std::process::exit(1);
                 }
             });
