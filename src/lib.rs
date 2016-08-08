@@ -396,9 +396,9 @@ impl<'a> Server<'a> {
                                                  remaining));
                     }
                 }
-                Err(e) => {
+                Err(_) => {
                     client.close().expect("Error closing stream");
-                    die!("failed to read from file: {:?}", e);
+                    die!("failed to read from file");
                 }
             }
         }
@@ -520,7 +520,6 @@ impl Client {
         keybytes.copy_from_slice(&keyhex.from_hex().unwrap()[..]);
         let key = Key(keybytes);
         let addr: SocketAddr = SocketAddr::from_str(&format!("{}:{}", ip, port)[..]).unwrap();
-        let conn = connection::Client::new(addr, key);
 
         let start_ts = Instant::now();
         match self.transfer_state.clone() {
@@ -528,6 +527,7 @@ impl Client {
                 die!("send not supported");
             }
             TransferState::Receive(_, dest_path) => {
+                let conn = connection::Client::new(addr, key);
                 let mut offset = 0u64;
                 let mut filesize = None;
                 loop {
@@ -558,9 +558,10 @@ impl Client {
                                    (filesize.unwrap() as f64) / (1024f64 * 1024f64));
                         match recv_file(&conn, filesize.unwrap(), Path::new(&dest_path), offset) {
                             Ok(_) => {
-                                if let Err(_) = conn.send(&[0u8; 1]) {
-                                    warn!("failed to send close signal to server");
+                                if let Err(e) = conn.send(&[0u8; 1]) {
+                                    warn!("failed to send close signal to server: {:?}", e);
                                 }
+                                let _ = conn.close();
                                 break;
                             }
                             Err(ShoopErr { kind: ShoopErrKind::Severed, finished, .. }) => {
@@ -651,6 +652,5 @@ fn recv_file<T: Transceiver>(conn: &T,
             break;
         }
     }
-    let _ = conn.close();
     Ok(())
 }
