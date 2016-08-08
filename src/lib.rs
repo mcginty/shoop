@@ -410,6 +410,8 @@ impl<'a> Server<'a> {
                                      remaining))
         }
 
+        info!("got client finish confirmation.");
+
         client.close().expect("Error closing stream.");
         Ok(())
     }
@@ -556,6 +558,9 @@ impl Client {
                                    (filesize.unwrap() as f64) / (1024f64 * 1024f64));
                         match recv_file(&conn, filesize.unwrap(), Path::new(&dest_path), offset) {
                             Ok(_) => {
+                                if let Err(_) = conn.send(&[0u8; 1]) {
+                                    warn!("failed to send close signal to server");
+                                }
                                 break;
                             }
                             Err(ShoopErr { kind: ShoopErrKind::Severed, finished, .. }) => {

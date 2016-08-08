@@ -6,7 +6,6 @@ extern crate shoop;
 
 use std::str;
 use std::env;
-use std::path::Path;
 use getopts::Options;
 use shoop::{ShoopLogger, ShoopMode, TransferMode, Target, Server, Client};
 use shoop::connection::PortRange;
@@ -102,21 +101,6 @@ fn main() {
 
             let source = Target::from(raw_source.clone());
             let dest = Target::from(raw_dest.clone());
-
-            if source.is_local() && dest.is_local() || source.is_remote() && dest.is_remote() {
-                error!("source and dest can't both be local or remote");
-                std::process::exit(1);
-            }
-
-            let source_path = Path::new(&raw_source);
-            let source_file_name = match source_path.file_name() {
-                Some(s) => s,
-                None => {
-                    error!("The remote path specified doesn't look like a path \
-                            to a file.");
-                    std::process::exit(1);
-                }
-            };
 
             match Client::new(source, dest, port_range) {
                 Ok(client) => client.start(),
