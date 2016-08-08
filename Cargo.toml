@@ -46,5 +46,3 @@ libc = "^0.2"
 [dev-dependencies]
 rand = "0.3"
 
-[profile.release]
-debug = true
