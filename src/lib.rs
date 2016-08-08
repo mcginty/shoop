@@ -62,9 +62,9 @@ macro_rules! die {
     };
 }
 
-pub struct Server<'a> {
+pub struct Server {
     pub ip: String,
-    filename: &'a str,
+    filename: String,
     conn: connection::Server,
 }
 
@@ -236,11 +236,21 @@ impl Target {
 }
 
 
-impl<'a> Server<'a> {
+impl Server {
     fn daemonize() {
         let stdout = Some(Path::new(&env::var("HOME").unwrap()).join(".shoop.log"));
         let stderr = stdout.clone();
         daemonize_redirect(stdout, stderr, ChdirMode::ChdirRoot).unwrap();
+    }
+
+    // TODO super basic
+    fn expand_filename(s: &str) -> String {
+        if s.starts_with("~/") {
+            Path::new(&env::var("HOME").unwrap()).join(&s[2..])
+                .to_str().unwrap().into()
+        } else {
+            s.into()
+        }
     }
 
     pub fn new(port_range: PortRange, filename: &str) -> Result<Server, ServerErr> {
@@ -253,7 +263,9 @@ impl<'a> Server<'a> {
             }
         };
 
-        if !Path::new(filename).is_file() {
+        let expanded_filename = Server::expand_filename(filename);
+
+        if !Path::new(&expanded_filename).is_file() {
             err = Some(ServerErr::File);
         }
 
@@ -272,7 +284,7 @@ impl<'a> Server<'a> {
                 Ok(Server {
                     ip: ip,
                     conn: conn,
-                    filename: filename,
+                    filename: expanded_filename,
                 })
             }
             Some(e) => {
@@ -366,7 +378,7 @@ impl<'a> Server<'a> {
         };
         let mut rdr = Cursor::new(starthdr);
         let offset = rdr.read_u64::<LittleEndian>().unwrap();
-        let mut f = File::open(self.filename).unwrap();
+        let mut f = File::open(self.filename.clone()).unwrap();
         f.seek(SeekFrom::Start(offset)).unwrap();
         let metadata = f.metadata().unwrap();
 
