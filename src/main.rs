@@ -8,7 +8,7 @@ use std::str;
 use std::env;
 use std::path::Path;
 use getopts::Options;
-use shoop::{ShoopLogger, ShoopMode, Server, download};
+use shoop::{ShoopLogger, ShoopMode, TransferMode, Target, Server, Client};
 use shoop::connection::PortRange;
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
@@ -29,28 +29,6 @@ Example: {0} seedbox.facebook.com:/home/zuck/internalized_sadness.zip .",
     print!("{}", opts.usage(&brief));
 }
 
-enum Target {
-    Local(String),
-    Remote(String, String),
-}
-
-impl Target {
-    fn from(s: String) -> Target {
-        match s.find(':') {
-            None => Target::Local(s),
-            Some(i) => {
-                let owned = s.to_owned();
-                let (first, second) = owned.split_at(i);
-                if first.contains('/') {
-                    Target::Local(s)
-                } else {
-                    Target::Remote(String::from(first), String::from(&second[1..]))
-                }
-            }
-        }
-    }
-}
-
 fn main() {
     let args: Vec<String> = env::args().collect();
     let program = args[0].clone();
@@ -62,6 +40,7 @@ fn main() {
                 "port-range",
                 "server listening port range",
                 DEFAULT_PORT_RANGE);
+    opts.optflag("r", "receive", "receive mode (server mode only)");
     opts.optflag("s", "server", "server mode (advanced usage only)");
     opts.optflag("h", "help", "print this help menu");
     opts.optflag("v", "version", "print the version");
@@ -81,7 +60,7 @@ fn main() {
         return;
     }
 
-    let source = if !matches.free.is_empty() {
+    let raw_source = if !matches.free.is_empty() {
         matches.free[0].clone()
     } else {
         print_usage(&program, opts);
@@ -94,7 +73,6 @@ fn main() {
         ShoopMode::Client
     };
 
-
     let port_range = {
         let range_opt = &matches.opt_str("p").unwrap_or_else(|| String::from(DEFAULT_PORT_RANGE));
         PortRange::from(range_opt).unwrap()
@@ -104,50 +82,52 @@ fn main() {
 
     match mode {
         ShoopMode::Server => {
-            if let Ok(server) = Server::new(port_range, &source) {
-                server.start();
+            let transfer_mode = if matches.opt_present("r") {
+                TransferMode::Receive
+            } else {
+                TransferMode::Send
+            };
+
+            if let Ok(server) = Server::new(port_range, &raw_source) {
+                server.start(transfer_mode);
                 info!("exiting.");
             }
         }
         ShoopMode::Client => {
-            let dest = if matches.free.len() > 1 {
+            let raw_dest = if matches.free.len() > 1 {
                 matches.free[1].clone()
             } else {
                 String::from(".")
             };
 
-            match Target::from(source) {
-                Target::Local(_) => {
-                    error!("Sorry, you can only copy *from* a remote host currently.")
-                }
-                Target::Remote(source_addr, source_path_str) => {
-                    match Target::from(dest) {
-                        Target::Remote(_, _) => {
-                            error!("Sorry, you can only copy to a local path currently.")
-                        }
-                        Target::Local(dest_path_str) => {
-                            let source_path = Path::new(&source_path_str);
-                            let source_file_name = match source_path.file_name() {
-                                Some(s) => s,
-                                None => {
-                                    error!("The remote path specified doesn't look like a path \
-                                            to a file.");
-                                    std::process::exit(1);
-                                }
-                            };
-                            let dest_path = Path::new(&dest_path_str);
-                            let final_dest_path = if dest_path.is_dir() {
-                                dest_path.join(source_file_name)
-                            } else {
-                                dest_path.to_path_buf()
-                            };
+            let source = Target::from(raw_source.clone());
+            let dest = Target::from(raw_dest.clone());
 
-                            download(&source_addr, port_range, &source_path_str, final_dest_path);
-                        }
-                    }
-                }
+            if source.is_local() && dest.is_local() || source.is_remote() && dest.is_remote() {
+                error!("source and dest can't both be local or remote");
+                std::process::exit(1);
             }
 
+            let source_path = Path::new(&raw_source);
+            let source_file_name = match source_path.file_name() {
+                Some(s) => s,
+                None => {
+                    error!("The remote path specified doesn't look like a path \
+                            to a file.");
+                    std::process::exit(1);
+                }
+            };
+            let dest_path = Path::new(&raw_dest);
+            let final_dest_path = if dest_path.is_dir() {
+                dest_path.join(source_file_name)
+            } else {
+                dest_path.to_path_buf()
+            };
+
+            match Client::new(source, dest, port_range) {
+                Ok(client) => client.start(),
+                Err(e) => error!("{}", e),
+            }
         }
     }
 }

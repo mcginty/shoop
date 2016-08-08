@@ -150,6 +150,12 @@ pub struct PortRange {
     end: u16,
 }
 
+pub trait Transceiver {
+    fn send(&self, buf: &[u8]) -> Result<(), UdtError>;
+    fn recv(&self) -> Result<Vec<u8>, UdtError>;
+    fn close(&self) -> Result<(), UdtError>;
+}
+
 pub struct Server {
     pub ip_addr: IpAddr,
     pub port: u16,
@@ -181,16 +187,18 @@ impl Client {
     pub fn connect(&self) -> Result<(), UdtError> {
         self.sock.connect(self.addr)
     }
+}
 
-    pub fn send(&self, buf: &[u8]) -> Result<(), UdtError> {
+impl Transceiver for Client {
+    fn send(&self, buf: &[u8]) -> Result<(), UdtError> {
         send(&self.sock, &self.key, buf)
     }
 
-    pub fn recv(&self) -> Result<Vec<u8>, UdtError> {
+    fn recv(&self) -> Result<Vec<u8>, UdtError> {
         recv(&self.sock, &self.key)
     }
 
-    pub fn close(&self) -> Result<(), UdtError> {
+    fn close(&self) -> Result<(), UdtError> {
         self.sock.close()
     }
 }
@@ -231,20 +239,22 @@ impl Server {
 }
 
 impl<'a> ServerConnection<'a> {
-    pub fn send(&self, buf: &[u8]) -> Result<(), UdtError> {
+    pub fn getpeer(&self) -> Result<SocketAddr, UdtError> {
+        self.sock.getpeername()
+    }
+}
+
+impl<'a> Transceiver for ServerConnection<'a> {
+    fn send(&self, buf: &[u8]) -> Result<(), UdtError> {
         send(&self.sock, self.key, buf)
     }
 
-    pub fn recv(&self) -> Result<Vec<u8>, UdtError> {
+    fn recv(&self) -> Result<Vec<u8>, UdtError> {
         recv(&self.sock, self.key)
     }
 
-    pub fn close(&self) -> Result<(), UdtError> {
+    fn close(&self) -> Result<(), UdtError> {
         self.sock.close()
-    }
-
-    pub fn getpeer(&self) -> Result<SocketAddr, UdtError> {
-        self.sock.getpeername()
     }
 }
 

@@ -17,6 +17,7 @@ extern crate rand;
 
 pub mod connection;
 
+use connection::{PortRange, Transceiver};
 use unix_daemonize::{daemonize_redirect, ChdirMode};
 use std::process::Command;
 use std::net::{SocketAddr, IpAddr};
@@ -66,10 +67,35 @@ pub struct Server<'a> {
     conn: connection::Server,
 }
 
+pub type LocalTarget = PathBuf;
+pub type RemoteTarget = (String, PathBuf);
+#[derive(Clone)]
+pub enum Target {
+    Local(LocalTarget),
+    Remote(RemoteTarget),
+}
+
+#[derive(Clone)]
+enum TransferState {
+    Send(LocalTarget, RemoteTarget),
+    Receive(RemoteTarget, LocalTarget),
+}
+
+pub struct Client {
+    port_range: PortRange,
+    transfer_state: TransferState,
+}
+
 #[derive(Clone, Copy)]
 pub enum ShoopMode {
     Server,
     Client,
+}
+
+#[derive(Clone, Copy)]
+pub enum TransferMode {
+    Send,
+    Receive,
 }
 
 #[derive(Clone, Copy)]
@@ -79,13 +105,12 @@ pub enum ServerErr {
 }
 
 impl fmt::Display for ServerErr {
-    #[allow(unknown_lints, match_ref_pats)]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-         let pretty = match self {
-            &ServerErr::SshEnv => {
+         let pretty = match *self {
+            ServerErr::SshEnv => {
                 "SSH_CONNECTION env variable unset but required."
             }
-            &ServerErr::File => {
+            ServerErr::File => {
                 "File doesn't exist, ya dingus."
             }
         };
@@ -163,6 +188,53 @@ impl ShoopErr {
     }
 }
 
+impl Target {
+    pub fn from(s: String) -> Target {
+        match s.find(':') {
+            None => Target::Local(s.into()),
+            Some(i) => {
+                let owned = s.to_owned();
+                let (first, second) = owned.split_at(i);
+                if first.contains('/') {
+                    Target::Local(s.into())
+                } else {
+                    Target::Remote((first.into(), (&second[1..]).into()))
+                }
+            }
+        }
+    }
+
+    pub fn is_local(&self) -> bool {
+        match *self {
+            Target::Local(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_remote(&self) -> bool {
+        !self.is_local()
+    }
+
+    fn looks_like_file_path(&self) -> bool {
+        let target = self.clone();
+        let path = match target {
+            Target::Local(s) => s,
+            Target::Remote((_, s)) => s,
+        };
+        Path::new(&path).file_name().is_some()
+    }
+
+    fn get_path(&self) -> PathBuf {
+        let target = self.clone();
+        let path = match target {
+            Target::Local(s) => s,
+            Target::Remote((_, s)) => s,
+        };
+        PathBuf::from(&path)
+    }
+}
+
+
 impl<'a> Server<'a> {
     fn daemonize() {
         let stdout = Some(Path::new(&env::var("HOME").unwrap()).join(".shoop.log"));
@@ -170,7 +242,7 @@ impl<'a> Server<'a> {
         daemonize_redirect(stdout, stderr, ChdirMode::ChdirRoot).unwrap();
     }
 
-    pub fn new(port_range: connection::PortRange, filename: &str) -> Result<Server, ServerErr> {
+    pub fn new(port_range: PortRange, filename: &str) -> Result<Server, ServerErr> {
         let mut err: Option<ServerErr> = None;
         let sshconnstr = match env::var("SSH_CONNECTION") {
             Ok(s) => s.trim().to_owned(),
@@ -212,7 +284,7 @@ impl<'a> Server<'a> {
         }
     }
 
-    pub fn start(&self) {
+    pub fn start(&self, mode: TransferMode) {
         self.conn.listen().unwrap();
 
         let mut connection_count: usize = 0;
@@ -238,26 +310,48 @@ impl<'a> Server<'a> {
             connection_count += 1;
             tx.send(()).unwrap();
             info!("accepted connection with {:?}!", client.getpeer());
-            match self.send_file(&client) {
-                Ok(_) => {
-                    info!("done sending file");
-                    let _ = client.close();
-                    break;
+            match mode {
+                TransferMode::Send => {
+                    match self.send_file(&client) {
+                        Ok(_) => {
+                            info!("done sending file");
+                            let _ = client.close();
+                            break;
+                        }
+                        Err(ShoopErr { kind: ShoopErrKind::Severed, msg, finished }) => {
+                            info!("connection severed, msg: {:?}, finished: {}", msg, finished);
+                            let _ = client.close();
+                            continue;
+                        }
+                        Err(ShoopErr { kind: ShoopErrKind::Fatal, msg, finished }) => {
+                            die!("connection fatal, msg: {:?}, finished: {}", msg, finished);
+                        }
+                    }
                 }
-                Err(ShoopErr { kind: ShoopErrKind::Severed, msg, finished }) => {
-                    info!("connection severed, msg: {:?}, finished: {}", msg, finished);
-                    let _ = client.close();
-                    continue;
-                }
-                Err(ShoopErr { kind: ShoopErrKind::Fatal, msg, finished }) => {
-                    die!("connection fatal, msg: {:?}, finished: {}", msg, finished);
+                TransferMode::Receive => {
+                    die!("receive not supported yet");
+                    // match recv_file(&self.conn, filesize.unwrap(), &local_path, offset) {
+                    //     Ok(_) => {
+                    //         info!("done sending file");
+                    //         let _ = client.close();
+                    //         break;
+                    //     }
+                    //     Err(ShoopErr { kind: ShoopErrKind::Severed, msg, finished }) => {
+                    //         info!("connection severed, msg: {:?}, finished: {}", msg, finished);
+                    //         let _ = client.close();
+                    //         continue;
+                    //     }
+                    //     Err(ShoopErr { kind: ShoopErrKind::Fatal, msg, finished }) => {
+                    //         die!("connection fatal, msg: {:?}, finished: {}", msg, finished);
+                    //     }
+                    // }
                 }
             }
         }
         info!("stopped listening.");
     }
 
-    fn send_file(&self, client: &connection::ServerConnection) -> Result<(), ShoopErr> {
+    fn send_file<T: Transceiver>(&self, client: &T) -> Result<(), ShoopErr> {
         let starthdr = match client.recv() {
             Ok(hdr) => hdr,
             Err(e) => return Err(ShoopErr::new(ShoopErrKind::Severed, &format!("{:?}", e), 0)),
@@ -306,101 +400,172 @@ impl<'a> Server<'a> {
     }
 }
 
-pub fn download(remote_ssh_host: &str,
-                port_range: connection::PortRange,
-                remote_path: &str,
-                local_path: PathBuf) {
-    let cmd = format!("shoop -s '{}' -p {}", remote_path, port_range);
+impl Client {
 
-    overprint!(" - establishing SSH session...");
-    assert!(command_exists("ssh"), "`ssh` is required!");
-    let output = Command::new("ssh")
-        .arg(remote_ssh_host.to_owned())
-        .arg(cmd)
-        .output()
-        .unwrap_or_else(|e| {
-            die!("failed to execute process: {}", e);
-        });
-    let response = String::from_utf8_lossy(&output.stdout).to_owned().trim().to_owned();
-    if response.starts_with("shooperr ") {
-        let errblock = &response["shooperr ".len()..];
-        let (code, msg) = errblock.split_at(errblock.find(' ').unwrap());
-        overprint!("");
-        error!("Server error #{}:{}", code, msg);
-        std::process::exit(1);
-    }
-
-    let info: Vec<&str> = response.split(' ').collect();
-    if info.len() != 5 {
-        die!("Unexpected response from server. Are you suuuuure shoop is setup on the server?");
-    }
-
-    let (magic, version, ip, port, keyhex) = (info[0], info[1], info[2], info[3], info[4]);
-    overprint!(" - opening UDT connection...");
-    if magic != "shoop" || version != "0" {
-        die!("Unexpected response from server. Are you suuuuure shoop is setup on the server?");
-    }
-
-    let mut keybytes = [0u8; 32];
-    keybytes.copy_from_slice(&keyhex.from_hex().unwrap()[..]);
-    let key = Key(keybytes);
-    let addr: SocketAddr = SocketAddr::from_str(&format!("{}:{}", ip, port)[..]).unwrap();
-    let conn = connection::Client::new(addr, key);
-
-    let mut offset = 0u64;
-    let mut filesize = None;
-    let start_ts = Instant::now();
-    loop {
-        match conn.connect() {
-            Ok(()) => {
-                overprint!(" - connection opened, shakin' hands, makin' frands");
-            }
-            Err(e) => {
-                die!("errrrrrrr connecting to {}:{} - {:?}", ip, port, e);
-            }
-        }
-        let mut wtr = vec![];
-        wtr.write_u64::<LittleEndian>(offset).unwrap();
-        if let Err(_) = conn.send(&wtr[..]) {
-            conn.close().unwrap();
-            continue;
+    pub fn new(source: Target, dest: Target, port_range: PortRange)
+            -> Result<Client, String> {
+        if source.is_local() && dest.is_local() ||
+            source.is_remote() && dest.is_remote() {
+            return Err("source and dest can't both be local or remote".into());
         }
 
-
-        if let Ok(msg) = conn.recv() {
-            if msg.is_empty() {
-                die!("failed to get filesize from server, probable timeout.");
+        if let Target::Local(path) = source.clone() {
+            if Path::new(&path).is_file() {
+                return Err("local source file doesn't exist or is a directory".into());
             }
-            let mut rdr = Cursor::new(msg);
-            filesize = filesize.or_else(|| Some(rdr.read_u64::<LittleEndian>().unwrap()));
-            overprint!("downloading {} ({:.1}MB)\n",
-                       local_path.to_string_lossy(),
-                       (filesize.unwrap() as f64) / (1024f64 * 1024f64));
-            match recv_file(&conn, filesize.unwrap(), &local_path, offset) {
-                Ok(_) => {
-                    break;
-                }
-                Err(ShoopErr { kind: ShoopErrKind::Severed, finished, .. }) => {
-                    println!("{}", " * [[SEVERED]]".yellow().bold());
-                    offset = finished;
-                }
-                Err(ShoopErr { kind: ShoopErrKind::Fatal, msg, .. }) => {
-                    die!("{:?}", msg);
+        }
+
+        if source.is_remote() && !source.looks_like_file_path() ||
+            dest.is_remote() && !dest.looks_like_file_path() {
+            return Err("remote target doesn't look like a normal \
+                       file path (folders not supported)".into());
+        }
+
+        let final_dest = match dest.clone() {
+            Target::Local(path) => {
+                let source_path = source.get_path();
+                let dest_path = Path::new(&path);
+                let final_dest_path = if dest_path.is_dir() {
+                    dest_path.join(source_path.file_name().unwrap())
+                } else {
+                    dest_path.to_path_buf()
+                };
+                Target::Local(final_dest_path)
+            }
+            Target::Remote(_) => dest
+        };
+
+        let state = if let Target::Local(s) = source {
+            if let Target::Remote(d) = final_dest {
+                TransferState::Send(s, d)
+            } else {
+                return Err("source and dest can't both be local".into());
+            }
+        } else if let Target::Remote(s) = source {
+            if let Target::Local(d) = final_dest {
+                TransferState::Receive(s, d)
+            } else {
+                return Err("source and dest can't both be remote".into());
+            }
+        } else {
+            panic!("something in the assertions are wrong.");
+        };
+
+        Ok(Client {
+            port_range: port_range,
+            transfer_state: state
+        })
+    }
+
+    pub fn start(&self) {
+        let (host, cmd) = match self.transfer_state.clone() {
+            TransferState::Send(..) => {
+                panic!("sending unsupported");
+            }
+            TransferState::Receive((host, path), _) => {
+                (host,
+                 format!("shoop -s '{}' -p {}",
+                         path.to_string_lossy(),
+                         self.port_range))
+            }
+        };
+
+        overprint!(" - establishing SSH session...");
+        assert!(command_exists("ssh"), "`ssh` is required!");
+        let output = Command::new("ssh")
+            .arg(host)
+            .arg(cmd)
+            .output()
+            .unwrap_or_else(|e| {
+                die!("failed to execute process: {}", e);
+            });
+        let response = String::from_utf8_lossy(&output.stdout).to_owned().trim().to_owned();
+        if response.starts_with("shooperr ") {
+            let errblock = &response["shooperr ".len()..];
+            let (code, msg) = errblock.split_at(errblock.find(' ').unwrap());
+            overprint!("");
+            error!("Server error #{}:{}", code, msg);
+            std::process::exit(1);
+        }
+
+        let info: Vec<&str> = response.split(' ').collect();
+        if info.len() != 5 {
+            die!("Unexpected response from server. Are you suuuuure shoop is setup on the server?");
+        }
+
+        let (magic, version, ip, port, keyhex) = (info[0], info[1], info[2], info[3], info[4]);
+        overprint!(" - opening UDT connection...");
+        if magic != "shoop" || version != "0" {
+            die!("Unexpected response from server. Are you suuuuure shoop is setup on the server?");
+        }
+
+        let mut keybytes = [0u8; 32];
+        keybytes.copy_from_slice(&keyhex.from_hex().unwrap()[..]);
+        let key = Key(keybytes);
+        let addr: SocketAddr = SocketAddr::from_str(&format!("{}:{}", ip, port)[..]).unwrap();
+        let conn = connection::Client::new(addr, key);
+
+        let start_ts = Instant::now();
+        match self.transfer_state.clone() {
+            TransferState::Send(..) => {
+                die!("send not supported");
+            }
+            TransferState::Receive(_, dest_path) => {
+                let mut offset = 0u64;
+                let mut filesize = None;
+                loop {
+                    match conn.connect() {
+                        Ok(()) => {
+                            overprint!(" - connection opened, shakin' hands, makin' frands");
+                        }
+                        Err(e) => {
+                            die!("errrrrrrr connecting to {}:{} - {:?}", ip, port, e);
+                        }
+                    }
+                    let mut wtr = vec![];
+                    wtr.write_u64::<LittleEndian>(offset).unwrap();
+                    if let Err(_) = conn.send(&wtr[..]) {
+                        conn.close().unwrap();
+                        continue;
+                    }
+
+                    if let Ok(msg) = conn.recv() {
+                        if msg.is_empty() {
+                            die!("failed to get filesize from server, probable timeout.");
+                        }
+                        let mut rdr = Cursor::new(msg);
+                        filesize = filesize.or_else(|| Some(rdr.read_u64::<LittleEndian>().unwrap()));
+                        overprint!("downloading {} ({:.1}MB)\n",
+                                   dest_path.to_string_lossy(),
+                                   (filesize.unwrap() as f64) / (1024f64 * 1024f64));
+                        match recv_file(&conn, filesize.unwrap(), Path::new(&dest_path), offset) {
+                            Ok(_) => {
+                                break;
+                            }
+                            Err(ShoopErr { kind: ShoopErrKind::Severed, finished, .. }) => {
+                                println!("{}", " * [[SEVERED]]".yellow().bold());
+                                offset = finished;
+                            }
+                            Err(ShoopErr { kind: ShoopErrKind::Fatal, msg, .. }) => {
+                                die!("{:?}", msg);
+                            }
+                        }
+                    }
+                    let _ = conn.close();
                 }
             }
         }
-        let _ = conn.close();
-    }
 
-    let elapsed = start_ts.elapsed().as_secs();
-    let fmt_time = if elapsed < 60 {
-        format!("{}s", elapsed)
-    } else if elapsed < 60 * 60 {
-        format!("{}m{}s", elapsed / 60, elapsed % 60)
-    } else {
-        format!("{}h{}m{}s", elapsed / (60 * 60), elapsed / 60, elapsed % 60)
-    };
-    println!("shooped it all up in {}", fmt_time.green().bold());
+        let elapsed = start_ts.elapsed().as_secs();
+        let fmt_time = if elapsed < 60 {
+            format!("{}s", elapsed)
+        } else if elapsed < 60 * 60 {
+            format!("{}m{}s", elapsed / 60, elapsed % 60)
+        } else {
+            format!("{}h{}m{}s", elapsed / (60 * 60), elapsed / 60, elapsed % 60)
+        };
+        println!("shooped it all up in {}", fmt_time.green().bold());
+    }
 }
 
 fn command_exists(command: &str) -> bool {
@@ -410,10 +575,10 @@ fn command_exists(command: &str) -> bool {
     }
 }
 
-fn recv_file(conn: &connection::Client,
-             filesize: u64,
-             filename: &PathBuf,
-             offset: u64)
+fn recv_file<T: Transceiver>(conn: &T,
+                             filesize: u64,
+                             filename: &Path,
+                             offset: u64)
              -> Result<(), ShoopErr> {
     let mut f = OpenOptions::new().write(true).create(true).truncate(false).open(filename).unwrap();
     f.seek(SeekFrom::Start(offset)).unwrap();
