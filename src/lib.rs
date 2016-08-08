@@ -403,6 +403,13 @@ impl<'a> Server<'a> {
             }
         }
 
+        if let Err(e) = client.recv(buf) {
+            warn!("finished sending, but failed getting client confirmation");
+            return Err(ShoopErr::new(ShoopErrKind::Severed,
+                                     &format!("{:?}", e),
+                                     remaining))
+        }
+
         client.close().expect("Error closing stream.");
         Ok(())
     }

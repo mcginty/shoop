@@ -3,7 +3,7 @@ extern crate udt;
 use std::net::{UdpSocket, SocketAddr, IpAddr};
 use std::str;
 use std::fmt;
-use udt::{UdtSocket, UdtError, UdtOpts, SocketType, SocketFamily};
+use udt::{Linger, UdtSocket, UdtError, UdtOpts, SocketType, SocketFamily};
 use sodiumoxide::crypto::secretbox::xsalsa20poly1305::Key;
 
 // TODO config
@@ -216,6 +216,7 @@ impl Server {
 
     pub fn new(ip_addr: IpAddr, port: u16, key: Key) -> Server {
         let sock = new_udt_socket();
+        sock.setsockopt(UdtOpts::UDT_LINGER, Linger{ onoff: 1, linger: 21600}).unwrap();
         sock.bind(SocketAddr::new(ip_addr, port)).unwrap();
         Server {
             sock: sock,
