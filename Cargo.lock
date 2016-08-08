@@ -12,7 +12,7 @@ dependencies = [
  "rustc_version 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "sodiumoxide 0.0.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "time 0.1.35 (registry+https://github.com/rust-lang/crates.io-index)",
- "udt 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "udt 0.1.4 (git+https://github.com/mcginty/udt-rs)",
  "unix-daemonize 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -80,7 +80,7 @@ dependencies = [
 [[package]]
 name = "libudt4-sys"
 version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
+source = "git+https://github.com/mcginty/udt-rs#d9c65a68a01dcc96baf5f32be7a14d10acb52ece"
 dependencies = [
  "gcc 0.3.32 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.1.12 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -150,11 +150,11 @@ dependencies = [
 [[package]]
 name = "udt"
 version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
+source = "git+https://github.com/mcginty/udt-rs#d9c65a68a01dcc96baf5f32be7a14d10acb52ece"
 dependencies = [
  "bitflags 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.1.12 (registry+https://github.com/rust-lang/crates.io-index)",
- "libudt4-sys 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libudt4-sys 0.1.1 (git+https://github.com/mcginty/udt-rs)",
  "log 0.3.6 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -187,7 +187,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum libc 0.1.12 (registry+https://github.com/rust-lang/crates.io-index)" = "e32a70cf75e5846d53a673923498228bbec6a8624708a9ea5645f075d6276122"
 "checksum libc 0.2.14 (registry+https://github.com/rust-lang/crates.io-index)" = "39dfaaa0f4da0f1a06876c5d94329d739ad0150868069cc235f1ddf80a0480e7"
 "checksum libsodium-sys 0.0.12 (registry+https://github.com/rust-lang/crates.io-index)" = "44e9986c330611ccd26ea74e502c70e5ebab2874c4c23f2f5f3c5a6ed3fbfbc6"
-"checksum libudt4-sys 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "9c0334e13b5670427779e1d2be94ce23f15217fdcf3c0be33d360726fdbb18ff"
+"checksum libudt4-sys 0.1.1 (git+https://github.com/mcginty/udt-rs)" = "<none>"
 "checksum log 0.3.6 (registry+https://github.com/rust-lang/crates.io-index)" = "ab83497bf8bf4ed2a74259c1c802351fcd67a65baa86394b6ba73c36f4838054"
 "checksum pkg-config 0.3.8 (registry+https://github.com/rust-lang/crates.io-index)" = "8cee804ecc7eaf201a4a207241472cc870e825206f6c031e3ee2a72fa425f2fa"
 "checksum rand 0.3.14 (registry+https://github.com/rust-lang/crates.io-index)" = "2791d88c6defac799c3f20d74f094ca33b9332612d9aef9078519c82e4fe04a5"
@@ -197,7 +197,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum serde 0.7.14 (registry+https://github.com/rust-lang/crates.io-index)" = "ca26d73c85073a878620b5ccd6b2c94d9b0545417ece1226b41da1e82e78c9c6"
 "checksum sodiumoxide 0.0.12 (registry+https://github.com/rust-lang/crates.io-index)" = "8d9da099120def269669aa349e0c3e97de4ab2c5cb9a54a765041651dd0055eb"
 "checksum time 0.1.35 (registry+https://github.com/rust-lang/crates.io-index)" = "3c7ec6d62a20df54e07ab3b78b9a3932972f4b7981de295563686849eb3989af"
-"checksum udt 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)" = "55d50df66f1499e62cfda0591a27ec0aa47452da442119ca05de8533957628fa"
+"checksum udt 0.1.4 (git+https://github.com/mcginty/udt-rs)" = "<none>"
 "checksum unix-daemonize 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "531faed80732acaa13d1016c66d6a9180b5045c4fcef8daa20bb2baf46b13907"
 "checksum winapi 0.2.8 (registry+https://github.com/rust-lang/crates.io-index)" = "167dc9d6949a9b857f3451275e911c3f44255842c1f7a76f33c55103a909087a"
 "checksum winapi-build 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "2d315eee3b34aca4797b2da6b13ed88266e6d612562a0c46390af8299fc699bc"

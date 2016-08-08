@@ -37,10 +37,14 @@ byteorder = "^0.5"
 sodiumoxide = "0.0.12"
 rustc-serialize = "^0.3"
 time = "^0.1"
-udt = "^0.1"
+# udt = "^0.1"
+udt = { git = "https://github.com/mcginty/udt-rs" }
 colored = "1.3"
 libc = "^0.2"
 
 
 [dev-dependencies]
 rand = "0.3"
+
+[profile.release]
+debug = true

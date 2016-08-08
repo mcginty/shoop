@@ -117,12 +117,6 @@ fn main() {
                     std::process::exit(1);
                 }
             };
-            let dest_path = Path::new(&raw_dest);
-            let final_dest_path = if dest_path.is_dir() {
-                dest_path.join(source_file_name)
-            } else {
-                dest_path.to_path_buf()
-            };
 
             match Client::new(source, dest, port_range) {
                 Ok(client) => client.start(),

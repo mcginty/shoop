@@ -352,7 +352,8 @@ impl<'a> Server<'a> {
     }
 
     fn send_file<T: Transceiver>(&self, client: &T) -> Result<(), ShoopErr> {
-        let starthdr = match client.recv() {
+        let buf = &mut [0u8; connection::MAX_MESSAGE_SIZE];
+        let starthdr = match client.recv(buf) {
             Ok(hdr) => hdr,
             Err(e) => return Err(ShoopErr::new(ShoopErrKind::Severed, &format!("{:?}", e), 0)),
         };
@@ -529,7 +530,8 @@ impl Client {
                         continue;
                     }
 
-                    if let Ok(msg) = conn.recv() {
+                    let buf = &mut [0u8; connection::MAX_MESSAGE_SIZE];
+                    if let Ok(msg) = conn.recv(buf) {
                         if msg.is_empty() {
                             die!("failed to get filesize from server, probable timeout.");
                         }
@@ -588,8 +590,9 @@ fn recv_file<T: Transceiver>(conn: &T,
     let mut speed_ts = Instant::now();
     let mut speed_total = total;
     let mut speed = 0u64;
+    let buf = &mut [0u8; connection::MAX_MESSAGE_SIZE];
     loop {
-        let buf = try!(conn.recv()
+        let buf = try!(conn.recv(buf)
             .map_err(|e| ShoopErr::new(ShoopErrKind::Severed, &format!("{:?}", e), total)));
         if buf.len() < 1 {
             return Err(ShoopErr::new(ShoopErrKind::Severed, "empty msg", total));

@@ -8,7 +8,7 @@ use sodiumoxide::crypto::secretbox::xsalsa20poly1305::Key;
 
 // TODO config
 const UDT_BUF_SIZE: i32 = 1024000;
-const MAX_MESSAGE_SIZE: usize = 1024 * 1024; // 1 MB max datagram
+pub const MAX_MESSAGE_SIZE: usize = 1024 * 1024; // 1 MB max datagram
 
 mod crypto {
     use sodiumoxide::crypto::secretbox;
@@ -136,8 +136,9 @@ fn send(sock: &UdtSocket, key: &Key, buf: &[u8]) -> Result<(), UdtError> {
     sock.sendmsg(&crypto::seal(buf, key)[..]).map(|_| ())
 }
 
-fn recv(sock: &UdtSocket, key: &Key) -> Result<Vec<u8>, UdtError> {
-    crypto::open(&try!(sock.recvmsg(MAX_MESSAGE_SIZE))[..], key).map_err(|_| {
+fn recv(sock: &UdtSocket, key: &Key, buf: &mut [u8]) -> Result<Vec<u8>, UdtError> {
+    let size = try!(sock.recvmsg(buf));
+    crypto::open(&buf[..size], key).map_err(|_| {
         UdtError {
             err_code: -1,
             err_msg: String::from("decryption failure"),
@@ -152,7 +153,7 @@ pub struct PortRange {
 
 pub trait Transceiver {
     fn send(&self, buf: &[u8]) -> Result<(), UdtError>;
-    fn recv(&self) -> Result<Vec<u8>, UdtError>;
+    fn recv(&self, buf: &mut [u8; MAX_MESSAGE_SIZE]) -> Result<Vec<u8>, UdtError>;
     fn close(&self) -> Result<(), UdtError>;
 }
 
@@ -194,8 +195,8 @@ impl Transceiver for Client {
         send(&self.sock, &self.key, buf)
     }
 
-    fn recv(&self) -> Result<Vec<u8>, UdtError> {
-        recv(&self.sock, &self.key)
+    fn recv(&self, buf: &mut [u8; MAX_MESSAGE_SIZE]) -> Result<Vec<u8>, UdtError> {
+        recv(&self.sock, &self.key, buf)
     }
 
     fn close(&self) -> Result<(), UdtError> {
@@ -249,8 +250,8 @@ impl<'a> Transceiver for ServerConnection<'a> {
         send(&self.sock, self.key, buf)
     }
 
-    fn recv(&self) -> Result<Vec<u8>, UdtError> {
-        recv(&self.sock, self.key)
+    fn recv(&self, buf: &mut [u8; MAX_MESSAGE_SIZE]) -> Result<Vec<u8>, UdtError> {
+        recv(&self.sock, self.key, buf)
     }
 
     fn close(&self) -> Result<(), UdtError> {
