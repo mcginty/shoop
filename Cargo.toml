@@ -41,6 +41,7 @@ time = "^0.1"
 udt = { git = "https://github.com/mcginty/udt-rs" }
 colored = "1.3"
 libc = "^0.2"
+pbr = "^0.2"
 
 [dev-dependencies]
 rand = "0.3"

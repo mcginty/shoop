@@ -2,6 +2,7 @@
 #[macro_use]
 extern crate log;
 extern crate libc;
+extern crate pbr;
 extern crate getopts;
 extern crate unix_daemonize;
 extern crate byteorder;
@@ -10,30 +11,30 @@ extern crate time;
 extern crate sodiumoxide;
 extern crate rustc_serialize;
 extern crate colored;
-
 // crates needed for unit tests
 #[cfg(test)]
 extern crate rand;
 
 pub mod connection;
 
+use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
+use colored::*;
 use connection::{PortRange, Transceiver};
-use unix_daemonize::{daemonize_redirect, ChdirMode};
+use log::{LogRecord, LogLevel, LogMetadata};
 use std::process::Command;
 use std::net::{SocketAddr, IpAddr};
+use std::fs::{OpenOptions, File};
+use std::io::{Cursor, Error, Seek, SeekFrom, stderr, Read, Write};
+use std::path::{Path, PathBuf};
 use std::{str, env, thread, fmt};
 use std::str::FromStr;
-use std::fs::{OpenOptions, File};
-use std::path::{Path, PathBuf};
-use std::time::{Instant, Duration};
-use std::io::{Cursor, Error, Seek, SeekFrom, stderr, Read, Write};
 use std::sync::mpsc;
-use log::{LogRecord, LogLevel, LogMetadata};
-use colored::*;
-use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
+use std::time::{Instant, Duration};
+use pbr::{ProgressBar, Units};
+use rustc_serialize::hex::{FromHex, ToHex};
 use sodiumoxide::crypto::secretbox;
 use sodiumoxide::crypto::secretbox::xsalsa20poly1305::Key;
-use rustc_serialize::hex::{FromHex, ToHex};
+use unix_daemonize::{daemonize_redirect, ChdirMode};
 
 // TODO config
 const INITIAL_ACCEPT_TIMEOUT_SECONDS: u64 = 60;
@@ -234,7 +235,6 @@ impl Target {
         PathBuf::from(&path)
     }
 }
-
 
 impl Server {
     fn daemonize() {
@@ -615,12 +615,9 @@ fn recv_file<T: Transceiver>(conn: &T,
              -> Result<(), ShoopErr> {
     let mut f = OpenOptions::new().write(true).create(true).truncate(false).open(filename).unwrap();
     f.seek(SeekFrom::Start(offset)).unwrap();
-    let start = Instant::now();
-    let mut ts = Instant::now();
     let mut total = offset;
-    let mut speed_ts = Instant::now();
-    let mut speed_total = total;
-    let mut speed = 0u64;
+    let mut pb = ProgressBar::new(filesize);
+    pb.set_units(Units::Bytes);
     let buf = &mut [0u8; connection::MAX_MESSAGE_SIZE];
     loop {
         let buf = try!(conn.recv(buf)
@@ -631,37 +628,13 @@ fn recv_file<T: Transceiver>(conn: &T,
 
         f.write_all(&buf[..]).unwrap();
         total += buf.len() as u64;
-        let speed_elapsed = speed_ts.elapsed();
-        if speed_elapsed > Duration::new(1, 0) {
-            speed = ((total - speed_total) as f64 /
-                     ((speed_elapsed.as_secs() as f64) +
-                      (speed_elapsed.subsec_nanos() as f64) /
-                      1_000_000_000f64)) as u64;
-            speed_ts = Instant::now();
-            speed_total = total;
-        }
-        let speedfmt = if speed < 1024 {
-            format!("{} b/s", speed)
-        } else if speed < 1024 * 1024 {
-            format!("{} kb/s", speed / 1024)
-        } else {
-            format!("{:.1} MB/s", ((speed / 1024) as f64) / 1024f64)
-        };
+        pb.add(buf.len() as u64);
 
-        if ts.elapsed() > Duration::new(0, 100_000_000) {
-            overprint!("   {:.1}M / {:.1}M ({:.1}%) [ {} ]",
-                       (total as f64) / (1024f64 * 1024f64),
-                       (filesize as f64) / (1024f64 * 1024f64),
-                       (total as f64) / (filesize as f64) * 100f64,
-                       speedfmt);
-            ts = Instant::now();
-        }
         if total >= filesize {
-            overprint!("   {0:.1}M / {0:.1}M (100%) [ avg {1:.1} MB/s ]\n",
-                       (filesize as f64) / (1024f64 * 1024f64),
-                       ((total - offset) / start.elapsed().as_secs() / 1024) as f64 / 1024f64);
+            pb.finish();
             break;
         }
     }
     Ok(())
 }
+
