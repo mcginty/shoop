@@ -16,12 +16,12 @@ extern crate colored;
 extern crate rand;
 
 pub mod connection;
+pub mod ssh;
 
 use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
 use colored::*;
 use connection::{PortRange, Transceiver};
 use log::{LogRecord, LogLevel, LogMetadata};
-use std::process::Command;
 use std::net::{SocketAddr, IpAddr};
 use std::fs::{OpenOptions, File};
 use std::io;
@@ -32,7 +32,7 @@ use std::str::FromStr;
 use std::sync::mpsc;
 use std::time::{Instant, Duration};
 use pbr::{ProgressBar, Units};
-use rustc_serialize::hex::{FromHex, ToHex};
+use rustc_serialize::hex::ToHex;
 use sodiumoxide::crypto::secretbox;
 use sodiumoxide::crypto::secretbox::xsalsa20poly1305::Key;
 use unix_daemonize::{daemonize_redirect, ChdirMode};
@@ -488,49 +488,21 @@ impl Client {
     }
 
     pub fn start(&self, force_dl: bool) {
-        let (host, cmd) = match self.transfer_state.clone() {
+        let ssh = match self.transfer_state.clone() {
             TransferState::Send(..) => {
                 panic!("sending unsupported");
             }
             TransferState::Receive((host, path), _) => {
-                (host,
-                 format!("shoop -s '{}' -p {}",
-                         path.to_string_lossy(),
-                         self.port_range))
+                ssh::Connection::new(host, path, &self.port_range)
             }
         };
 
         overprint!(" - establishing SSH session...");
-        assert!(command_exists("ssh"), "`ssh` is required!");
-        let output = Command::new("ssh")
-            .arg(host)
-            .arg(cmd)
-            .output()
-            .unwrap_or_else(|e| {
-                die!("failed to execute process: {}", e);
-            });
-        let response = String::from_utf8_lossy(&output.stdout).to_owned().trim().to_owned();
-        if response.starts_with("shooperr ") {
-            let errblock = &response["shooperr ".len()..];
-            let (code, msg) = errblock.split_at(errblock.find(' ').unwrap());
-            overprint!("");
-            error!("Server error #{}:{}", code, msg);
+
+        let response = ssh.connect().unwrap_or_else(|e| {
+            error!("ssh error: {}", e.msg);
             std::process::exit(1);
-        }
-
-        let info: Vec<&str> = response.split(' ').collect();
-        if info.len() != 5 {
-            die!("Unexpected response from server. Are you suuuuure shoop is setup on the server?");
-        }
-
-        let (magic, version, ip, port, keyhex) = (info[0], info[1], info[2], info[3], info[4]);
-        if magic != "shoop" || version != "0" {
-            die!("Unexpected response from server. Are you suuuuure shoop is setup on the server?");
-        }
-
-        let mut keybytes = [0u8; 32];
-        keybytes.copy_from_slice(&keyhex.from_hex().unwrap()[..]);
-        let addr: SocketAddr = SocketAddr::from_str(&format!("{}:{}", ip, port)[..]).unwrap();
+        });
 
         let start_ts = Instant::now();
         let mut pb = ProgressBar::new(0);
@@ -539,7 +511,11 @@ impl Client {
                 die!("send not supported");
             }
             TransferState::Receive(_, dest_path) => {
-                self.receive(&dest_path, force_dl, addr, keybytes, &mut pb);
+                self.receive(&dest_path,
+                             force_dl,
+                             response.addr,
+                             response.key,
+                             &mut pb);
             }
         }
 
@@ -575,6 +551,10 @@ impl Client {
                    normalized == "yes" ||
                    normalized == "yeah" ||
                    normalized == "heck yes" {
+                    break;
+                } else if normalized == "whatever" ||
+                          normalized == "w/e" {
+                    println!("{}", "close enough.".green().bold());
                     break;
                 } else if normalized == "n" ||
                           normalized == "no" ||
@@ -626,12 +606,15 @@ impl Client {
                                 offset,
                                 &mut pb) {
                     Ok(_) => {
-                        pb.message(&format!("{}  ",
+                        pb.message(&format!("{} (done, sending confirmation)  ",
                                    dest_path.file_name().unwrap().to_string_lossy().green()));
                         pb.tick();
                         if let Err(e) = conn.send(&[0u8; 1]) {
                             warn!("failed to send close signal to server: {:?}", e);
                         }
+                        pb.message(&format!("{}  ",
+                                   dest_path.file_name().unwrap().to_string_lossy().green()));
+                        pb.tick();
                         let _ = conn.close();
                         break;
                     }
@@ -646,13 +629,6 @@ impl Client {
             }
             let _ = conn.close();
         }
-    }
-}
-
-fn command_exists(command: &str) -> bool {
-    match Command::new("which").arg(command).output() {
-        Ok(output) => output.status.success(),
-        Err(_) => false,
     }
 }
 
