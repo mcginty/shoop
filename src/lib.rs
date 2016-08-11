@@ -564,10 +564,18 @@ impl Client {
                         }
                         let mut rdr = Cursor::new(msg);
                         filesize = filesize.or_else(|| Some(rdr.read_u64::<LittleEndian>().unwrap()));
-                        overprint!("downloading {} ({:.1}MB)\n",
-                                   dest_path.to_string_lossy(),
-                                   (filesize.unwrap() as f64) / (1024f64 * 1024f64));
-                        match recv_file(&conn, filesize.unwrap(), Path::new(&dest_path), offset) {
+                        let mut pb = ProgressBar::new(filesize.unwrap());
+                        pb.set_units(Units::Bytes);
+                        pb.format(" =💃 ⛩");
+                        // pb.tick_format("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏");
+                        pb.tick_format("🌑🌒🌓🌔🌕🌖🌗🌘");
+                        pb.message(&format!("{}  ",
+                                   dest_path.to_string_lossy().dimmed()));
+                        match recv_file(&conn,
+                                        filesize.unwrap(),
+                                        Path::new(&dest_path),
+                                        offset,
+                                        &mut pb) {
                             Ok(_) => {
                                 if let Err(e) = conn.send(&[0u8; 1]) {
                                     warn!("failed to send close signal to server: {:?}", e);
@@ -611,13 +619,12 @@ fn command_exists(command: &str) -> bool {
 fn recv_file<T: Transceiver>(conn: &T,
                              filesize: u64,
                              filename: &Path,
-                             offset: u64)
+                             offset: u64,
+                             pb: &mut ProgressBar)
              -> Result<(), ShoopErr> {
     let mut f = OpenOptions::new().write(true).create(true).truncate(false).open(filename).unwrap();
     f.seek(SeekFrom::Start(offset)).unwrap();
     let mut total = offset;
-    let mut pb = ProgressBar::new(filesize);
-    pb.set_units(Units::Bytes);
     let buf = &mut [0u8; connection::MAX_MESSAGE_SIZE];
     loop {
         let buf = try!(conn.recv(buf)
@@ -628,6 +635,7 @@ fn recv_file<T: Transceiver>(conn: &T,
 
         f.write_all(&buf[..]).unwrap();
         total += buf.len() as u64;
+
         pb.add(buf.len() as u64);
 
         if total >= filesize {
