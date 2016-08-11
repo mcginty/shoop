@@ -533,6 +533,7 @@ impl Client {
         let addr: SocketAddr = SocketAddr::from_str(&format!("{}:{}", ip, port)[..]).unwrap();
 
         let start_ts = Instant::now();
+        let mut pb;
         match self.transfer_state.clone() {
             TransferState::Send(..) => {
                 die!("send not supported");
@@ -564,19 +565,22 @@ impl Client {
                         }
                         let mut rdr = Cursor::new(msg);
                         filesize = filesize.or_else(|| Some(rdr.read_u64::<LittleEndian>().unwrap()));
-                        let mut pb = ProgressBar::new(filesize.unwrap());
+                        pb = ProgressBar::new(filesize.unwrap());
                         pb.set_units(Units::Bytes);
                         pb.format(" =💃 ⛩");
-                        // pb.tick_format("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏");
-                        pb.tick_format("🌑🌒🌓🌔🌕🌖🌗🌘");
+                        pb.tick_format("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏");
+                        // pb.tick_format("🌑🌒🌓🌔🌕🌖🌗🌘");
                         pb.message(&format!("{}  ",
-                                   dest_path.to_string_lossy().dimmed()));
+                                   dest_path.file_name().unwrap().to_string_lossy().blue()));
                         match recv_file(&conn,
                                         filesize.unwrap(),
                                         Path::new(&dest_path),
                                         offset,
                                         &mut pb) {
                             Ok(_) => {
+                                pb.message(&format!("{}  ",
+                                           dest_path.file_name().unwrap().to_string_lossy().green()));
+                                pb.tick();
                                 if let Err(e) = conn.send(&[0u8; 1]) {
                                     warn!("failed to send close signal to server: {:?}", e);
                                 }
@@ -584,7 +588,7 @@ impl Client {
                                 break;
                             }
                             Err(ShoopErr { kind: ShoopErrKind::Severed, finished, .. }) => {
-                                println!("{}", " * [[SEVERED]]".yellow().bold());
+                                pb.message(&format!("{}", "[[conn severed]] ".yellow().bold()));
                                 offset = finished;
                             }
                             Err(ShoopErr { kind: ShoopErrKind::Fatal, msg, .. }) => {
@@ -605,7 +609,7 @@ impl Client {
         } else {
             format!("{}h{}m{}s", elapsed / (60 * 60), elapsed / 60, elapsed % 60)
         };
-        println!("shooped it all up in {}", fmt_time.green().bold());
+        pb.finish_print(&format!("shooped it all up in {}", fmt_time.green().bold()));
     }
 }
 
@@ -639,7 +643,6 @@ fn recv_file<T: Transceiver>(conn: &T,
         pb.add(buf.len() as u64);
 
         if total >= filesize {
-            pb.finish();
             break;
         }
     }
