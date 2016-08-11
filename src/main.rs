@@ -39,6 +39,7 @@ fn main() {
                 "port-range",
                 "server listening port range",
                 DEFAULT_PORT_RANGE);
+    opts.optflag("f", "force", "force overwrite (client only)");
     opts.optflag("r", "receive", "receive mode (server mode only)");
     opts.optflag("s", "server", "server mode (advanced usage only)");
     opts.optflag("h", "help", "print this help menu");
@@ -103,7 +104,7 @@ fn main() {
             let dest = Target::from(raw_dest.clone());
 
             match Client::new(source, dest, port_range) {
-                Ok(client) => client.start(),
+                Ok(client) => client.start(matches.opt_present("f")),
                 Err(e) => error!("{}", e),
             }
         }

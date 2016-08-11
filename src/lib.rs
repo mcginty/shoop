@@ -487,7 +487,7 @@ impl Client {
         })
     }
 
-    pub fn start(&self) {
+    pub fn start(&self, force_dl: bool) {
         let (host, cmd) = match self.transfer_state.clone() {
             TransferState::Send(..) => {
                 panic!("sending unsupported");
@@ -542,7 +542,7 @@ impl Client {
                 let mut offset = 0u64;
                 let mut filesize = None;
                 let path = Path::new(&dest_path);
-                if path.is_file() {
+                if path.is_file() && !force_dl {
                     loop {
                         print!("\n{}[y/n] ",
                                "file exists. overwrite? ".yellow().bold());
