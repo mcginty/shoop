@@ -4,6 +4,7 @@ use std::net::{UdpSocket, SocketAddr, IpAddr};
 use std::str;
 use std::fmt;
 use udt::{UdtSocket, UdtError, UdtOpts, SocketType, SocketFamily};
+use sodiumoxide;
 use sodiumoxide::crypto::secretbox::xsalsa20poly1305::Key;
 
 // TODO config
@@ -123,6 +124,10 @@ mod crypto {
     }
 }
 
+fn assert_crypto_init() {
+    assert!(sodiumoxide::init(), "Failed to initialize crypto library.");
+}
+
 fn new_udt_socket() -> UdtSocket {
     udt::init();
     let sock = UdtSocket::new(SocketFamily::AFInet, SocketType::Datagram).unwrap();
@@ -177,6 +182,7 @@ pub struct ServerConnection<'a> {
 
 impl Client {
     pub fn new(addr: SocketAddr, key: Key) -> Client {
+        assert_crypto_init();
         let sock = new_udt_socket();
         Client {
             addr: addr,
@@ -215,6 +221,7 @@ impl Server {
     }
 
     pub fn new(ip_addr: IpAddr, port: u16, key: Key) -> Server {
+        assert_crypto_init();
         let sock = new_udt_socket();
         sock.bind(SocketAddr::new(ip_addr, port)).unwrap();
         Server {
