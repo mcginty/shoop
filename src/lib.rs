@@ -24,6 +24,7 @@ use log::{LogRecord, LogLevel, LogMetadata};
 use std::process::Command;
 use std::net::{SocketAddr, IpAddr};
 use std::fs::{OpenOptions, File};
+use std::io;
 use std::io::{Cursor, Error, Seek, SeekFrom, stderr, Read, Write};
 use std::path::{Path, PathBuf};
 use std::{str, env, thread, fmt};
@@ -523,7 +524,6 @@ impl Client {
         }
 
         let (magic, version, ip, port, keyhex) = (info[0], info[1], info[2], info[3], info[4]);
-        overprint!(" - opening UDT connection...");
         if magic != "shoop" || version != "0" {
             die!("Unexpected response from server. Are you suuuuure shoop is setup on the server?");
         }
@@ -541,7 +541,28 @@ impl Client {
             TransferState::Receive(_, dest_path) => {
                 let mut offset = 0u64;
                 let mut filesize = None;
+                let path = Path::new(&dest_path);
+                if path.is_file() {
+                    loop {
+                        print!("\n{}[y/n] ",
+                               "file exists. overwrite? ".yellow().bold());
+                        io::stdout().flush().expect("stdout flush fail");
+                        let mut input = String::new();
+                        io::stdin().read_line(&mut input).expect("stdio fail");
+                        let normalized = input.trim().to_lowercase();
+                        if normalized == "y" || normalized == "yes" {
+                            break;
+                        } else if normalized == "n" || normalized == "no" {
+                            error!("sheepishly avoiding overwriting your data. you're welcome, jeez.");
+                            std::process::exit(0);
+                        } else {
+                            println!("answer 'y' or 'n'.")
+                        }
+                    }
+                }
+
                 loop {
+                    overprint!(" - opening UDT connection...");
                     let conn = connection::Client::new(addr, Key(keybytes));
                     match conn.connect() {
                         Ok(()) => {
@@ -574,7 +595,7 @@ impl Client {
                                    dest_path.file_name().unwrap().to_string_lossy().blue()));
                         match recv_file(&conn,
                                         filesize.unwrap(),
-                                        Path::new(&dest_path),
+                                        path,
                                         offset,
                                         &mut pb) {
                             Ok(_) => {
