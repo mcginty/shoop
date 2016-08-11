@@ -25,7 +25,7 @@ use std::process::Command;
 use std::net::{SocketAddr, IpAddr};
 use std::fs::{OpenOptions, File};
 use std::io;
-use std::io::{Cursor, Error, Seek, SeekFrom, stderr, Read, Write};
+use std::io::{Cursor, Error, Seek, SeekFrom, Read, Write};
 use std::path::{Path, PathBuf};
 use std::{str, env, thread, fmt};
 use std::str::FromStr;
