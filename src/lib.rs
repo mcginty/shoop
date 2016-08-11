@@ -550,9 +550,15 @@ impl Client {
                         let mut input = String::new();
                         io::stdin().read_line(&mut input).expect("stdio fail");
                         let normalized = input.trim().to_lowercase();
-                        if normalized == "y" || normalized == "yes" {
+                        if normalized == "y" ||
+                           normalized == "yes" ||
+                           normalized == "yeah" ||
+                           normalized == "heck yes" {
                             break;
-                        } else if normalized == "n" || normalized == "no" {
+                        } else if normalized == "n" ||
+                                  normalized == "no" ||
+                                  normalized == "nah" ||
+                                  normalized == "heck naw" {
                             error!("sheepishly avoiding overwriting your data. you're welcome, jeez.");
                             std::process::exit(0);
                         } else {
