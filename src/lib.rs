@@ -533,98 +533,13 @@ impl Client {
         let addr: SocketAddr = SocketAddr::from_str(&format!("{}:{}", ip, port)[..]).unwrap();
 
         let start_ts = Instant::now();
-        let mut pb;
+        let mut pb = ProgressBar::new(0);
         match self.transfer_state.clone() {
             TransferState::Send(..) => {
                 die!("send not supported");
             }
             TransferState::Receive(_, dest_path) => {
-                let mut offset = 0u64;
-                let mut filesize = None;
-                let path = Path::new(&dest_path);
-                if path.is_file() && !force_dl {
-                    loop {
-                        print!("\n{}[y/n] ",
-                               "file exists. overwrite? ".yellow().bold());
-                        io::stdout().flush().expect("stdout flush fail");
-                        let mut input = String::new();
-                        io::stdin().read_line(&mut input).expect("stdio fail");
-                        let normalized = input.trim().to_lowercase();
-                        if normalized == "y" ||
-                           normalized == "yes" ||
-                           normalized == "yeah" ||
-                           normalized == "heck yes" {
-                            break;
-                        } else if normalized == "n" ||
-                                  normalized == "no" ||
-                                  normalized == "nah" ||
-                                  normalized == "heck naw" {
-                            error!("sheepishly avoiding overwriting your data. you're welcome, jeez.");
-                            std::process::exit(0);
-                        } else {
-                            println!("answer 'y' or 'n'.")
-                        }
-                    }
-                }
-
-                loop {
-                    overprint!(" - opening UDT connection...");
-                    let conn = connection::Client::new(addr, Key(keybytes));
-                    match conn.connect() {
-                        Ok(()) => {
-                            overprint!(" - connection opened, shakin' hands, makin' frands");
-                        }
-                        Err(e) => {
-                            die!("errrrrrrr connecting to {}:{} - {:?}", ip, port, e);
-                        }
-                    }
-                    let mut wtr = vec![];
-                    wtr.write_u64::<LittleEndian>(offset).unwrap();
-                    if let Err(_) = conn.send(&wtr[..]) {
-                        conn.close().unwrap();
-                        continue;
-                    }
-
-                    let buf = &mut [0u8; connection::MAX_MESSAGE_SIZE];
-                    if let Ok(msg) = conn.recv(buf) {
-                        if msg.is_empty() {
-                            die!("failed to get filesize from server, probable timeout.");
-                        }
-                        let mut rdr = Cursor::new(msg);
-                        filesize = filesize.or_else(|| Some(rdr.read_u64::<LittleEndian>().unwrap()));
-                        pb = ProgressBar::new(filesize.unwrap());
-                        pb.set_units(Units::Bytes);
-                        pb.format(" =💃 ⛩");
-                        pb.tick_format("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏");
-                        // pb.tick_format("🌑🌒🌓🌔🌕🌖🌗🌘");
-                        pb.message(&format!("{}  ",
-                                   dest_path.file_name().unwrap().to_string_lossy().blue()));
-                        match recv_file(&conn,
-                                        filesize.unwrap(),
-                                        path,
-                                        offset,
-                                        &mut pb) {
-                            Ok(_) => {
-                                pb.message(&format!("{}  ",
-                                           dest_path.file_name().unwrap().to_string_lossy().green()));
-                                pb.tick();
-                                if let Err(e) = conn.send(&[0u8; 1]) {
-                                    warn!("failed to send close signal to server: {:?}", e);
-                                }
-                                let _ = conn.close();
-                                break;
-                            }
-                            Err(ShoopErr { kind: ShoopErrKind::Severed, finished, .. }) => {
-                                pb.message(&format!("{}", "[[conn severed]] ".yellow().bold()));
-                                offset = finished;
-                            }
-                            Err(ShoopErr { kind: ShoopErrKind::Fatal, msg, .. }) => {
-                                die!("{:?}", msg);
-                            }
-                        }
-                    }
-                    let _ = conn.close();
-                }
+                self.receive(&dest_path, force_dl, addr, keybytes, &mut pb);
             }
         }
 
@@ -637,6 +552,100 @@ impl Client {
             format!("{}h{}m{}s", elapsed / (60 * 60), elapsed / 60, elapsed % 60)
         };
         pb.finish_print(&format!("shooped it all up in {}", fmt_time.green().bold()));
+    }
+
+    fn receive(&self,
+               dest_path: &PathBuf,
+               force_dl: bool,
+               addr: SocketAddr,
+               keybytes: [u8; 32],
+               mut pb: &mut ProgressBar) {
+        let mut offset = 0u64;
+        let mut filesize = None;
+        let path = Path::new(dest_path);
+        if path.is_file() && !force_dl {
+            loop {
+                print!("\n{}[y/n] ",
+                       "file exists. overwrite? ".yellow().bold());
+                io::stdout().flush().expect("stdout flush fail");
+                let mut input = String::new();
+                io::stdin().read_line(&mut input).expect("stdio fail");
+                let normalized = input.trim().to_lowercase();
+                if normalized == "y" ||
+                   normalized == "yes" ||
+                   normalized == "yeah" ||
+                   normalized == "heck yes" {
+                    break;
+                } else if normalized == "n" ||
+                          normalized == "no" ||
+                          normalized == "nah" ||
+                          normalized == "heck naw" {
+                    error!("sheepishly avoiding overwriting your data. you're welcome, jeez.");
+                    std::process::exit(0);
+                } else {
+                    println!("answer 'y' or 'n'.")
+                }
+            }
+        }
+
+        loop {
+            overprint!(" - opening UDT connection...");
+            let conn = connection::Client::new(addr, Key(keybytes));
+            match conn.connect() {
+                Ok(()) => {
+                    overprint!(" - connection opened, shakin' hands, makin' frands");
+                }
+                Err(e) => {
+                    die!("errrrrrrr connecting to {}:{} - {:?}", addr.ip(), addr.port(), e);
+                }
+            }
+            let mut wtr = vec![];
+            wtr.write_u64::<LittleEndian>(offset).unwrap();
+            if let Err(_) = conn.send(&wtr[..]) {
+                conn.close().unwrap();
+                continue;
+            }
+
+            let buf = &mut [0u8; connection::MAX_MESSAGE_SIZE];
+            if let Ok(msg) = conn.recv(buf) {
+                if msg.is_empty() {
+                    die!("failed to get filesize from server, probable timeout.");
+                }
+                let mut rdr = Cursor::new(msg);
+                filesize = filesize.or_else(|| Some(rdr.read_u64::<LittleEndian>().unwrap()));
+                *pb = ProgressBar::new(filesize.unwrap());
+                pb.set_units(Units::Bytes);
+                pb.format(" =💃 ⛩");
+                pb.tick_format("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏");
+                // pb.tick_format("🌑🌒🌓🌔🌕🌖🌗🌘");
+                pb.message(&format!("{}  ",
+                           dest_path.file_name().unwrap().to_string_lossy().blue()));
+                match recv_file(&conn,
+                                filesize.unwrap(),
+                                path,
+                                offset,
+                                &mut pb) {
+                    Ok(_) => {
+                        pb.message(&format!("{}  ",
+                                   dest_path.file_name().unwrap().to_string_lossy().green()));
+                        pb.tick();
+                        if let Err(e) = conn.send(&[0u8; 1]) {
+                            warn!("failed to send close signal to server: {:?}", e);
+                        }
+                        let _ = conn.close();
+                        break;
+                    }
+                    Err(ShoopErr { kind: ShoopErrKind::Severed, finished, .. }) => {
+                        pb.message(&format!("{}", "[[conn severed]] ".yellow().bold()));
+                        offset = finished;
+                    }
+                    Err(ShoopErr { kind: ShoopErrKind::Fatal, msg, .. }) => {
+                        die!("{:?}", msg);
+                    }
+                }
+            }
+            let _ = conn.close();
+        }
     }
 }
 
