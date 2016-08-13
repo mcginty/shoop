@@ -17,6 +17,7 @@ extern crate rand;
 
 pub mod connection;
 pub mod ssh;
+pub mod file;
 
 use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
 use colored::*;
@@ -638,9 +639,11 @@ fn recv_file<T: Transceiver>(conn: &T,
                              offset: u64,
                              pb: &mut ProgressBar)
              -> Result<(), ShoopErr> {
-    let mut f = OpenOptions::new().write(true).create(true).truncate(false).open(filename).unwrap();
-    f.seek(SeekFrom::Start(offset)).unwrap();
+    let f = file::Writer::new(filename.to_path_buf());
+    f.seek(SeekFrom::Start(offset));
     let mut total = offset;
+    let mut packet_count = 0u64;
+    let mut elapsed_bytes = 0u64;
     let buf = &mut [0u8; connection::MAX_MESSAGE_SIZE];
     loop {
         let buf = try!(conn.recv(buf)
@@ -649,15 +652,22 @@ fn recv_file<T: Transceiver>(conn: &T,
             return Err(ShoopErr::new(ShoopErrKind::Severed, "empty msg", total));
         }
 
-        f.write_all(&buf[..]).unwrap();
-        total += buf.len() as u64;
-
-        pb.add(buf.len() as u64);
+        let len = buf.len() as u64;
+        total += len;
+        elapsed_bytes += len;
+        if packet_count % 8 == 0 {
+            pb.add(elapsed_bytes);
+            elapsed_bytes = 0;
+        }
+        packet_count += 1;
+        f.write_all(buf);
 
         if total >= filesize {
+            pb.add(elapsed_bytes);
             break;
         }
     }
+    f.close();
     Ok(())
 }
 
