@@ -531,6 +531,35 @@ impl Client {
         pb.finish_print(&format!("shooped it all up in {}", fmt_time.green().bold()));
     }
 
+    fn confirm_overwrite() -> Result<(),()> {
+        loop {
+            print!("\n{}[y/n] ",
+                   "file exists. overwrite? ".yellow().bold());
+            io::stdout().flush().expect("stdout flush fail");
+            let mut input = String::new();
+            io::stdin().read_line(&mut input).expect("stdio fail");
+            let normalized = input.trim().to_lowercase();
+            if normalized == "y" ||
+               normalized == "yes" ||
+               normalized == "yeah" ||
+               normalized == "heck yes" {
+                break;
+            } else if normalized == "whatever" ||
+                      normalized == "w/e" {
+                println!("{}", "close enough.".green().bold());
+                break;
+            } else if normalized == "n" ||
+                      normalized == "no" ||
+                      normalized == "nah" ||
+                      normalized == "heck naw" {
+                return Err(())
+            } else {
+                println!("answer 'y' or 'n'.")
+            }
+        }
+        Ok(())
+    }
+
     fn receive(&self,
                dest_path: &PathBuf,
                force_dl: bool,
@@ -540,33 +569,9 @@ impl Client {
         let mut offset = 0u64;
         let mut filesize = None;
         let path = Path::new(dest_path);
-        if path.is_file() && !force_dl {
-            loop {
-                print!("\n{}[y/n] ",
-                       "file exists. overwrite? ".yellow().bold());
-                io::stdout().flush().expect("stdout flush fail");
-                let mut input = String::new();
-                io::stdin().read_line(&mut input).expect("stdio fail");
-                let normalized = input.trim().to_lowercase();
-                if normalized == "y" ||
-                   normalized == "yes" ||
-                   normalized == "yeah" ||
-                   normalized == "heck yes" {
-                    break;
-                } else if normalized == "whatever" ||
-                          normalized == "w/e" {
-                    println!("{}", "close enough.".green().bold());
-                    break;
-                } else if normalized == "n" ||
-                          normalized == "no" ||
-                          normalized == "nah" ||
-                          normalized == "heck naw" {
-                    error!("sheepishly avoiding overwriting your data. you're welcome, jeez.");
-                    std::process::exit(0);
-                } else {
-                    println!("answer 'y' or 'n'.")
-                }
-            }
+        if path.is_file() && !force_dl && Client::confirm_overwrite().is_err() {
+            error!("sheepishly avoiding overwriting your data. you're welcome, jeez.");
+            std::process::exit(0);
         }
 
         loop {
