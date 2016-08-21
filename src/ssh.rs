@@ -94,7 +94,10 @@ impl<'a> Connection<'a> {
         let info: Vec<&str> = response.split(' ').collect();
         if info.len() != 5 {
             return Err(Error::new(ErrorType::BadServerResponse,
-                                  "unexpected response length from server"));
+                                  format!("{}\n{}: {}",
+                                          "unexpected response length from server",
+                                          "server said",
+                                          response)));
         }
 
         let (magic, version, ip, port, keyhex) = (info[0], info[1], info[2], info[3], info[4]);
