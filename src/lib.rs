@@ -18,13 +18,14 @@ extern crate rand;
 pub mod connection;
 pub mod ssh;
 pub mod file;
+pub mod progress;
 
 use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
 use colored::*;
 use connection::{PortRange, Transceiver};
 use log::{LogRecord, LogLevel, LogMetadata};
 use std::net::{SocketAddr, IpAddr};
-use std::fs::{OpenOptions, File};
+use std::fs::File;
 use std::io;
 use std::io::{Cursor, Error, Seek, SeekFrom, Read, Write};
 use std::path::{Path, PathBuf};
@@ -32,7 +33,7 @@ use std::{str, env, thread, fmt};
 use std::str::FromStr;
 use std::sync::mpsc;
 use std::time::{Instant, Duration};
-use pbr::{ProgressBar, Units};
+use progress::Progress;
 use rustc_serialize::hex::ToHex;
 use sodiumoxide::crypto::secretbox;
 use sodiumoxide::crypto::secretbox::xsalsa20poly1305::Key;
@@ -506,7 +507,7 @@ impl Client {
         });
 
         let start_ts = Instant::now();
-        let mut pb = ProgressBar::new(0);
+        let pb = Progress::new();
         match self.transfer_state.clone() {
             TransferState::Send(..) => {
                 die!("send not supported");
@@ -516,7 +517,7 @@ impl Client {
                              force_dl,
                              response.addr,
                              response.key,
-                             &mut pb);
+                             &pb);
             }
         }
 
@@ -528,7 +529,7 @@ impl Client {
         } else {
             format!("{}h{}m{}s", elapsed / (60 * 60), elapsed / 60, elapsed % 60)
         };
-        pb.finish_print(&format!("shooped it all up in {}", fmt_time.green().bold()));
+        pb.finish(format!("shooped it all up in {}", fmt_time.green().bold()));
     }
 
     fn confirm_overwrite() -> Result<(),()> {
@@ -565,7 +566,7 @@ impl Client {
                force_dl: bool,
                addr: SocketAddr,
                keybytes: [u8; 32],
-               mut pb: &mut ProgressBar) {
+               pb: &Progress) {
         let mut offset = 0u64;
         let mut filesize = None;
         let path = Path::new(dest_path);
@@ -599,33 +600,27 @@ impl Client {
                 }
                 let mut rdr = Cursor::new(msg);
                 filesize = filesize.or_else(|| Some(rdr.read_u64::<LittleEndian>().unwrap()));
-                *pb = ProgressBar::new(filesize.unwrap());
-                pb.set_units(Units::Bytes);
-                pb.format(" =💃 ⛩");
-                pb.tick_format("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏");
-                // pb.tick_format("🌑🌒🌓🌔🌕🌖🌗🌘");
-                pb.message(&format!("{}  ",
+                pb.size(filesize.unwrap());
+                pb.message(format!("{}  ",
                            dest_path.file_name().unwrap().to_string_lossy().blue()));
                 match recv_file(&conn,
                                 filesize.unwrap(),
                                 path,
                                 offset,
-                                &mut pb) {
+                                &pb) {
                     Ok(_) => {
-                        pb.message(&format!("{} (done, sending confirmation)  ",
+                        pb.message(format!("{} (done, sending confirmation)  ",
                                    dest_path.file_name().unwrap().to_string_lossy().green()));
-                        pb.tick();
                         if let Err(e) = conn.send(&[0u8; 1]) {
                             warn!("failed to send close signal to server: {:?}", e);
                         }
-                        pb.message(&format!("{}  ",
+                        pb.message(format!("{}  ",
                                    dest_path.file_name().unwrap().to_string_lossy().green()));
-                        pb.tick();
                         let _ = conn.close();
                         break;
                     }
                     Err(ShoopErr { kind: ShoopErrKind::Severed, finished, .. }) => {
-                        pb.message(&format!("{}", "[[conn severed]] ".yellow().bold()));
+                        pb.message(format!("{}", "[[conn severed]] ".yellow().bold()));
                         offset = finished;
                     }
                     Err(ShoopErr { kind: ShoopErrKind::Fatal, msg, .. }) => {
@@ -642,7 +637,7 @@ fn recv_file<T: Transceiver>(conn: &T,
                              filesize: u64,
                              filename: &Path,
                              offset: u64,
-                             pb: &mut ProgressBar)
+                             pb: &Progress)
              -> Result<(), ShoopErr> {
     let f = file::Writer::new(filename.to_path_buf());
     f.seek(SeekFrom::Start(offset));

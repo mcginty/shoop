@@ -1,8 +1,8 @@
 use std::sync::mpsc;
 use std::thread;
-use std::path::{Path, PathBuf};
-use std::fs::{OpenOptions, File};
-use std::io::{Cursor, Error, Seek, SeekFrom, Read, Write};
+use std::path::PathBuf;
+use std::fs::OpenOptions;
+use std::io::{Seek, SeekFrom, Write};
 
 pub struct Writer {
     thread: thread::JoinHandle<()>,
