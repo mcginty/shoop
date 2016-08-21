@@ -32,33 +32,33 @@ impl Progress {
         let (tx, rx) = mpsc::channel();
         let t = thread::spawn(move || {
             let mut pb = new_pb(0);
-            let mut round_total: u64 = 0;
-            let mut newmsg: Option<String> = None;
+            let mut frame_total: u64 = 0;
+            let mut frame_message: Option<String> = None;
 
             loop {
                 match rx.try_recv() {
                     Ok(Msg::SetMessage(msg)) => {
-                        newmsg = Some(msg);
+                        frame_message = Some(msg);
                     }
                     Ok(Msg::SetSize(size)) => {
                         pb = new_pb(size);
                     }
                     Ok(Msg::Add(size)) => {
-                        round_total += size;
+                        frame_total += size;
                     }
                     Ok(Msg::Finish(msg)) => {
                         pb.finish_print(&msg);
                         break;
                     }
                     Err(TryRecvError::Empty) => {
-                        if let Some(msg) = newmsg {
+                        if let Some(msg) = frame_message {
                             pb.message(&msg);
                         }
                         if pb.total > 0 {
-                            pb.add(round_total);
+                            pb.add(frame_total);
                         }
-                        newmsg = None;
-                        round_total = 0;
+                        frame_message = None;
+                        frame_total = 0;
                         thread::sleep(Duration::from_millis(REFRESH_DELAY));
                     }
                     _ => {
