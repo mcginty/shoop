@@ -11,6 +11,7 @@ extern crate time;
 extern crate sodiumoxide;
 extern crate rustc_serialize;
 extern crate colored;
+
 // crates needed for unit tests
 #[cfg(test)]
 extern crate rand;
@@ -38,6 +39,7 @@ use rustc_serialize::hex::ToHex;
 use sodiumoxide::crypto::secretbox;
 use sodiumoxide::crypto::secretbox::xsalsa20poly1305::Key;
 use unix_daemonize::{daemonize_redirect, ChdirMode};
+use file::ReadMsg;
 
 // TODO config
 const INITIAL_ACCEPT_TIMEOUT_SECONDS: u64 = 60;
@@ -396,24 +398,26 @@ impl Server {
                 return Err(ShoopErr::new(ShoopErrKind::Severed, &format!("{:?}", e), remaining))
             }
         }
+
+        let reader = file::Reader::new(self.filename.clone());
         let mut payload = vec![0; 1300];
-        f.seek(SeekFrom::Start(offset)).unwrap();
         info!("sending file...");
         loop {
-            match f.read(&mut payload) {
-                Ok(0) => {
+            match reader.rx.recv() {
+                Ok(ReadMsg::Finish) => {
                     break;
                 }
-                Ok(read) => {
-                    if let Err(e) = client.send(&payload[0..read]) {
+                Ok(ReadMsg::Read(payload)) => {
+                    if let Err(e) = client.send(&payload[..]) {
                         return Err(ShoopErr::new(ShoopErrKind::Severed,
                                                  &format!("{:?}", e),
                                                  remaining));
                     }
                 }
-                Err(_) => {
+                Err(_) | Ok(ReadMsg::Error) => {
                     client.close().expect("Error closing stream");
-                    die!("failed to read from file");
+                    error!("failed to read from file");
+                    panic!("failed to read from file");
                 }
             }
         }
