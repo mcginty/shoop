@@ -533,7 +533,7 @@ impl Client {
         } else {
             format!("{}h{}m{}s", elapsed / (60 * 60), elapsed / 60, elapsed % 60)
         };
-        pb.finish(format!("shooped it all up in {}", fmt_time.green().bold()));
+        pb.finish(format!("shooped it all up in {}\n", fmt_time.green().bold()));
     }
 
     fn confirm_overwrite() -> Result<(),()> {

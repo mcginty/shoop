@@ -1,6 +1,6 @@
 use std::sync::mpsc;
 use std::sync::mpsc::TryRecvError;
-use std::time::Duration;
+use std::time::{Instant, Duration};
 use std::thread;
 use pbr::{ProgressBar, Units};
 
@@ -32,6 +32,7 @@ impl Progress {
         let (tx, rx) = mpsc::channel();
         let t = thread::spawn(move || {
             let mut pb = new_pb(0);
+            let mut last_add = Instant::now();
             let mut frame_total: u64 = 0;
             let mut frame_message: Option<String> = None;
 
@@ -57,6 +58,13 @@ impl Progress {
                         if pb.total > 0 {
                             pb.add(frame_total);
                         }
+                        if frame_total > 0 {
+                            last_add = Instant::now();
+                            pb.add(frame_total);
+                        } else if last_add.elapsed() < Duration::from_secs(5) {
+                            pb.tick();
+                        }
+
                         frame_message = None;
                         frame_total = 0;
                         thread::sleep(Duration::from_millis(REFRESH_DELAY));
