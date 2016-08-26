@@ -6,7 +6,7 @@ use std::io::Stdout;
 use pbr::{ProgressBar, Units};
 
 // like a beautiful film
-static REFRESH_DELAY: u64 = 1000 / 15;
+static REFRESH_DELAY: u64 = 1000 / 10;
 
 pub struct Progress {
     thread: thread::JoinHandle<()>,
@@ -64,11 +64,6 @@ impl Progress {
                         if let Some(msg) = frame_message {
                             do_maybe(&mut pb, |pb| pb.message(&msg));
                         }
-                        do_maybe(&mut pb, |pb| {
-                            if pb.total > 0 {
-                                pb.add(frame_total);
-                            }
-                        });
                         if frame_total > 0 {
                             last_add = Instant::now();
                             do_maybe(&mut pb, |pb| { pb.add(frame_total); });
