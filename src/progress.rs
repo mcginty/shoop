@@ -2,6 +2,7 @@ use std::sync::mpsc;
 use std::sync::mpsc::TryRecvError;
 use std::time::{Instant, Duration};
 use std::thread;
+use std::io::Stdout;
 use pbr::{ProgressBar, Units};
 
 // like a beautiful film
@@ -19,7 +20,7 @@ pub enum Msg {
     Finish(String),
 }
 
-fn new_pb(size: u64) -> ProgressBar<::std::io::Stdout> {
+fn new_pb(size: u64) -> ProgressBar<Stdout> {
     let mut pb = ProgressBar::new(size);
     pb.set_units(Units::Bytes);
     pb.format(" =💃 ⛩");
@@ -27,11 +28,19 @@ fn new_pb(size: u64) -> ProgressBar<::std::io::Stdout> {
     pb
 }
 
+fn do_maybe<F>(pb_maybe: &mut Option<ProgressBar<Stdout>>, f: F)
+    where F : Fn(&mut ProgressBar<Stdout>) -> ()
+{
+    if let Some(ref mut pb) = pb_maybe.as_mut() {
+        f(pb);
+    }
+}
+
 impl Progress {
     pub fn new() -> Progress {
         let (tx, rx) = mpsc::channel();
         let t = thread::spawn(move || {
-            let mut pb = new_pb(0);
+            let mut pb = None;
             let mut last_add = Instant::now();
             let mut frame_total: u64 = 0;
             let mut frame_message: Option<String> = None;
@@ -42,27 +51,29 @@ impl Progress {
                         frame_message = Some(msg);
                     }
                     Ok(Msg::SetSize(size)) => {
-                        pb = new_pb(size);
+                        pb = Some(new_pb(size));
                     }
                     Ok(Msg::Add(size)) => {
                         frame_total += size;
                     }
                     Ok(Msg::Finish(msg)) => {
-                        pb.finish_print(&msg);
+                        do_maybe(&mut pb, |pb| pb.finish_print(&msg));
                         break;
                     }
                     Err(TryRecvError::Empty) => {
                         if let Some(msg) = frame_message {
-                            pb.message(&msg);
+                            do_maybe(&mut pb, |pb| pb.message(&msg));
                         }
-                        if pb.total > 0 {
-                            pb.add(frame_total);
-                        }
+                        do_maybe(&mut pb, |pb| {
+                            if pb.total > 0 {
+                                pb.add(frame_total);
+                            }
+                        });
                         if frame_total > 0 {
                             last_add = Instant::now();
-                            pb.add(frame_total);
+                            do_maybe(&mut pb, |pb| { pb.add(frame_total); });
                         } else if last_add.elapsed() < Duration::from_secs(5) {
-                            pb.tick();
+                            do_maybe(&mut pb, |pb| pb.tick());
                         }
 
                         frame_message = None;
