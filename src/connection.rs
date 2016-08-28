@@ -75,24 +75,17 @@ pub mod crypto {
 
         pub fn open(&mut self, buf: &mut [u8]) -> Result<usize, String> {
             let nonce_len = ALGORITHM.nonce_len();
+
             if buf.len() < nonce_len {
                 return Err("msg not long enough to contain nonce".into());
             } else if buf.len() > super::MAX_MESSAGE_SIZE {
                 return Err("max message size exceeded".into());
             }
+
             let nonce = buf[..nonce_len].to_owned();
-            self._working_buf[..buf.len()-nonce_len].copy_from_slice(&buf[nonce_len..]);
 
-            match aead::open_in_place(&self.opening_key, &nonce, 0, &mut self._working_buf[..buf.len()-nonce_len], &[]) {
-                Ok(opened_len) => {
-                    buf[..opened_len].copy_from_slice(&self._working_buf[..opened_len]);
-                    Ok(opened_len)
-                }
-                Err(_) => {
-                    Err("decrypt failed".into())
-                }
-            }
-
+            aead::open_in_place(&self.opening_key, &nonce, nonce_len, buf, &[])
+                .map_err(|_| String::from("decrypt failed"))
         }
     }
 
@@ -183,23 +176,19 @@ pub mod crypto {
         //}
     }
 
-    // #[cfg(all(feature = "nightly", test))]
-    // mod bench {
-    //    extern crate test;
-    //
-    //    #[bench]
-    //    fn bench_seal(b: &mut test::Bencher) {
-    //        use sodiumoxide::crypto::secretbox;
-    //        let key = secretbox::gen_key();
-    //        b.iter(move || super::seal(&[0; 1300], &key))
-    //    }
-    //
-    //    #[bench]
-    //    fn bench_gen_key(b: &mut test::Bencher) {
-    //        use sodiumoxide::crypto::secretbox;
-    //        b.iter(|| secretbox::gen_key());
-    //    }
-    // }
+    #[cfg(all(feature = "nightly", test))]
+    mod bench {
+       extern crate test;
+
+       // #[bench]
+       // fn bench_seal(b: &mut test::Bencher) {
+       //     let key = super::gen_key();
+       //     let mut handler = super::Handler::new(&key);
+       //     let mut buf = [0; super::super::MAX_MESSAGE_SIZE];
+       //     b.bytes = 1300;
+       //     b.iter(move || handler.seal(&mut buf, 1300))
+       // }
+    }
 }
 
 fn new_udt_socket() -> UdtSocket {
