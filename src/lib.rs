@@ -7,8 +7,8 @@ extern crate getopts;
 extern crate unix_daemonize;
 extern crate byteorder;
 extern crate udt;
+extern crate ring;
 extern crate time;
-extern crate sodiumoxide;
 extern crate rustc_serialize;
 extern crate colored;
 
@@ -36,8 +36,6 @@ use std::sync::mpsc;
 use std::time::{Instant, Duration};
 use progress::Progress;
 use rustc_serialize::hex::ToHex;
-use sodiumoxide::crypto::secretbox;
-use sodiumoxide::crypto::secretbox::xsalsa20poly1305::Key;
 use unix_daemonize::{daemonize_redirect, ChdirMode};
 use file::ReadMsg;
 
@@ -278,14 +276,13 @@ impl Server {
             None => {
                 let sshconn: Vec<&str> = sshconnstr.split(' ').collect();
                 let ip = sshconn[2].to_owned();
-                let key = secretbox::gen_key();
-                let Key(keybytes) = key;
+                let keybytes = connection::crypto::gen_key();
                 let port = connection::Server::get_open_port(&port_range).unwrap();
                 println!("shoop 0 {} {} {}", ip, port, keybytes.to_hex());
                 Server::daemonize();
                 info!("got request: serve \"{}\" on range {}", filename, port_range);
                 info!("sent response: shoop 0 {} {} <key redacted>", ip, port);
-                let conn = connection::Server::new(IpAddr::from_str(&ip).unwrap(), port, key);
+                let conn = connection::Server::new(IpAddr::from_str(&ip).unwrap(), port, &keybytes);
                 Ok(Server {
                     ip: ip,
                     conn: conn,
@@ -376,13 +373,14 @@ impl Server {
     }
 
     fn send_file<T: Transceiver>(&self, client: &T) -> Result<(), ShoopErr> {
-        let buf = &mut [0u8; connection::MAX_MESSAGE_SIZE];
-        let starthdr = match client.recv(buf) {
+        let mut buf = Vec::with_capacity(connection::MAX_MESSAGE_SIZE);
+        let recv_len = match client.recv(&mut buf[..]) {
             Ok(hdr) => hdr,
             Err(e) => return Err(ShoopErr::new(ShoopErrKind::Severed, &format!("{:?}", e), 0)),
         };
-        let mut rdr = Cursor::new(starthdr);
+        let mut rdr = Cursor::new(buf);
         let offset = rdr.read_u64::<LittleEndian>().unwrap();
+        buf = rdr.into_inner();
         let mut f = File::open(self.filename.clone()).unwrap();
         f.seek(SeekFrom::Start(offset)).unwrap();
         let metadata = f.metadata().unwrap();
@@ -422,7 +420,7 @@ impl Server {
             }
         }
 
-        if let Err(e) = client.recv(buf) {
+        if let Err(e) = client.recv(&mut buf[..]) {
             warn!("finished sending, but failed getting client confirmation");
             return Err(ShoopErr::new(ShoopErrKind::Severed,
                                      &format!("{:?}", e),
@@ -520,7 +518,7 @@ impl Client {
                 self.receive(&dest_path,
                              force_dl,
                              response.addr,
-                             response.key,
+                             &response.key,
                              &pb);
             }
         }
@@ -569,7 +567,7 @@ impl Client {
                dest_path: &PathBuf,
                force_dl: bool,
                addr: SocketAddr,
-               keybytes: [u8; 32],
+               keybytes: &[u8],
                pb: &Progress) {
         let mut offset = 0u64;
         let mut filesize = None;
@@ -581,7 +579,7 @@ impl Client {
 
         loop {
             overprint!(" - opening UDT connection...");
-            let conn = connection::Client::new(addr, Key(keybytes));
+            let conn = connection::Client::new(addr, &keybytes);
             match conn.connect() {
                 Ok(()) => {
                     overprint!(" - connection opened, shakin' hands, makin' frands");
@@ -597,12 +595,12 @@ impl Client {
                 continue;
             }
 
-            let buf = &mut [0u8; connection::MAX_MESSAGE_SIZE];
-            if let Ok(msg) = conn.recv(buf) {
-                if msg.is_empty() {
+            let mut buf = Vec::with_capacity(connection::MAX_MESSAGE_SIZE);
+            if let Ok(len) = conn.recv(&mut buf[..]) {
+                if len == 0 {
                     die!("failed to get filesize from server, probable timeout.");
                 }
-                let mut rdr = Cursor::new(msg);
+                let mut rdr = Cursor::new(buf);
                 filesize = filesize.or_else(|| Some(rdr.read_u64::<LittleEndian>().unwrap()));
                 pb.size(filesize.unwrap());
                 pb.message(format!("{}  ",
@@ -650,21 +648,20 @@ fn recv_file<T: Transceiver>(conn: &T,
     let mut elapsed_bytes = 0u64;
     let buf = &mut [0u8; connection::MAX_MESSAGE_SIZE];
     loop {
-        let buf = try!(conn.recv(buf)
+        let len = try!(conn.recv(buf)
             .map_err(|e| ShoopErr::new(ShoopErrKind::Severed, &format!("{:?}", e), total)));
-        if buf.len() < 1 {
+        if len < 1 {
             return Err(ShoopErr::new(ShoopErrKind::Severed, "empty msg", total));
         }
 
-        let len = buf.len() as u64;
-        total += len;
-        elapsed_bytes += len;
+        total += len as u64;
+        elapsed_bytes += len as u64;
         if packet_count % 8 == 0 {
             pb.add(elapsed_bytes);
             elapsed_bytes = 0;
         }
         packet_count += 1;
-        f.write_all(buf);
+        f.write_all(buf[..len].to_owned());
 
         if total >= filesize {
             pb.add(elapsed_bytes);

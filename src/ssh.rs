@@ -16,7 +16,7 @@ pub struct Connection<'a> {
 pub struct Response {
     pub version: usize,
     pub addr: SocketAddr,
-    pub key: [u8; 32],
+    pub key: Vec<u8>,
 }
 
 pub struct Error {
@@ -116,8 +116,8 @@ impl<'a> Connection<'a> {
                                   "unsupported protocol version"));
         }
 
-        let mut keybytes = [0u8; 32];
-        keybytes.copy_from_slice(&keyhex.from_hex().unwrap()[..]);
+        let mut keybytes = Vec::with_capacity(32);
+        keybytes.extend_from_slice(&keyhex.from_hex().unwrap()[..]);
         let addr: SocketAddr = try!(SocketAddr::from_str(&format!("{}:{}", ip, port)[..])
             .map_err(|_| {
                 Error::new(ErrorType::BadServerResponse,
