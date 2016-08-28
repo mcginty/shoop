@@ -16,7 +16,7 @@ pub mod crypto {
     use ring::aead;
     use ring::aead::{SealingKey, OpeningKey, Algorithm};
     use ring::rand::{SystemRandom, SecureRandom};
-    static ALGORITHM: &'static Algorithm = &aead::CHACHA20_POLY1305;
+    static ALGORITHM: &'static Algorithm = &aead::AES_256_GCM;
 
     pub struct Handler {
         _working_buf: [u8; super::MAX_MESSAGE_SIZE],
@@ -145,49 +145,90 @@ pub mod crypto {
             assert_eq!(orig, &data[..decrypted_len], "original and decrypted don't match!");
         }
 
-        //#[test]
-        //fn key_sanity() {
-        //    use std::collections::HashSet;
-        //    use sodiumoxide::crypto::secretbox;
-        //    use sodiumoxide::crypto::secretbox::xsalsa20poly1305::Key;
+        #[test]
+        fn key_sanity() {
+            use std::collections::HashSet;
 
-        //    let mut set: HashSet<[u8;32]> = HashSet::with_capacity(10000);
+            let mut set: HashSet<Vec<u8>> = HashSet::with_capacity(10000);
 
-        //    for _ in 0..10000 {
-        //        let key = secretbox::gen_key();
-        //        let Key(keybytes) = key;
-        //        assert!(set.insert(keybytes));
-        //    }
-        //}
-
-        //#[test]
-        //fn nonce_sanity() {
-        //    use std::collections::HashSet;
-        //    use sodiumoxide::crypto::secretbox;
-        //    use sodiumoxide::crypto::secretbox::xsalsa20poly1305::Nonce;
-
-        //    let mut set: HashSet<[u8;24]> = HashSet::with_capacity(10000);
-
-        //    for _ in 0..10000 {
-        //        let nonce = secretbox::gen_nonce();
-        //        let Nonce(noncebytes) = nonce;
-        //        assert!(set.insert(noncebytes));
-        //    }
-        //}
+            for _ in 0..10000 {
+                let key = super::gen_key();
+                assert!(set.insert(key));
+            }
+        }
     }
 
     #[cfg(all(feature = "nightly", test))]
     mod bench {
-       extern crate test;
+        extern crate test;
+        const DATA_SIZE: usize = 1300;
 
-       // #[bench]
-       // fn bench_seal(b: &mut test::Bencher) {
-       //     let key = super::gen_key();
-       //     let mut handler = super::Handler::new(&key);
-       //     let mut buf = [0; super::super::MAX_MESSAGE_SIZE];
-       //     b.bytes = 1300;
-       //     b.iter(move || handler.seal(&mut buf, 1300))
-       // }
+        #[bench]
+        fn bench_raw_seal(b: &mut test::Bencher) {
+            use ring::aead;
+            use ring::aead::{SealingKey, OpeningKey, Algorithm};
+            use ring::rand::{SystemRandom, SecureRandom};
+
+            let rng = SystemRandom::new();
+            let mut key_bytes = vec![0u8; super::ALGORITHM.key_len()];
+            let mut nonce_bytes = vec![0u8; super::ALGORITHM.nonce_len()];
+            rng.fill(&mut key_bytes).unwrap();
+            rng.fill(&mut nonce_bytes).unwrap();
+            let key = SealingKey::new(super::ALGORITHM, &key_bytes).unwrap();
+
+            let data = [1u8; DATA_SIZE];
+            let out_suffix_capacity = super::ALGORITHM.max_overhead_len();
+            let mut in_out = vec![1u8; data.len() + out_suffix_capacity];
+
+            b.bytes = DATA_SIZE as u64;
+            b.iter(move || aead::seal_in_place(&key, &nonce_bytes, &mut in_out,
+                                               out_suffix_capacity, &[]).unwrap())
+        }
+
+        #[bench]
+        fn bench_raw_open(b: &mut test::Bencher) {
+            use ring::aead;
+            use ring::aead::{SealingKey, OpeningKey, Algorithm};
+            use ring::rand::{SystemRandom, SecureRandom};
+
+            let rng = SystemRandom::new();
+            let mut key_bytes = vec![0u8; super::ALGORITHM.key_len()];
+            let mut nonce_bytes = vec![0u8; super::ALGORITHM.nonce_len()];
+            rng.fill(&mut key_bytes).unwrap();
+            rng.fill(&mut nonce_bytes).unwrap();
+            let key = SealingKey::new(super::ALGORITHM, &key_bytes).unwrap();
+            let opening_key = OpeningKey::new(super::ALGORITHM, &key_bytes).unwrap();
+
+            let data = [1u8; DATA_SIZE];
+            let out_suffix_capacity = super::ALGORITHM.max_overhead_len();
+            let mut in_out = vec![1u8; data.len() + out_suffix_capacity];
+
+            b.bytes = DATA_SIZE as u64;
+
+            let sealed_len = aead::seal_in_place(&key, &nonce_bytes, &mut in_out,
+                                                 out_suffix_capacity, &[]).unwrap();
+            b.iter(move || aead::open_in_place(&opening_key, &nonce_bytes,
+                                               0, &mut in_out, &[]))
+        }
+
+        #[bench]
+        fn bench_seal(b: &mut test::Bencher) {
+            let key = super::gen_key();
+            let mut handler = super::Handler::new(&key);
+            let mut buf = vec![0u8; super::super::MAX_MESSAGE_SIZE];
+            b.bytes = DATA_SIZE as u64;
+            b.iter(move || handler.seal(&mut buf, DATA_SIZE))
+        }
+
+        #[bench]
+        fn bench_open(b: &mut test::Bencher) {
+            let key = super::gen_key();
+            let mut handler = super::Handler::new(&key);
+            let mut buf = vec![0u8; super::super::MAX_MESSAGE_SIZE];
+            let sealed_len = handler.seal(&mut buf, DATA_SIZE).unwrap();
+            b.bytes = DATA_SIZE as u64;
+            b.iter(move || handler.open(&mut buf[..sealed_len]))
+        }
     }
 }
 
