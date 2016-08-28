@@ -173,7 +173,6 @@ pub mod crypto {
             let mut key_bytes = vec![0u8; super::ALGORITHM.key_len()];
             let mut nonce_bytes = vec![0u8; super::ALGORITHM.nonce_len()];
             rng.fill(&mut key_bytes).unwrap();
-            rng.fill(&mut nonce_bytes).unwrap();
             let key = SealingKey::new(super::ALGORITHM, &key_bytes).unwrap();
 
             let data = [1u8; DATA_SIZE];
@@ -181,8 +180,11 @@ pub mod crypto {
             let mut in_out = vec![1u8; data.len() + out_suffix_capacity];
 
             b.bytes = DATA_SIZE as u64;
-            b.iter(move || aead::seal_in_place(&key, &nonce_bytes, &mut in_out,
-                                               out_suffix_capacity, &[]).unwrap())
+            b.iter(|| {
+                rng.fill(&mut nonce_bytes).unwrap();
+                aead::seal_in_place(&key, &nonce_bytes, &mut in_out,
+                                    out_suffix_capacity, &[]).unwrap()
+            })
         }
 
         #[bench]
@@ -207,7 +209,7 @@ pub mod crypto {
 
             let sealed_len = aead::seal_in_place(&key, &nonce_bytes, &mut in_out,
                                                  out_suffix_capacity, &[]).unwrap();
-            b.iter(move || aead::open_in_place(&opening_key, &nonce_bytes,
+            b.iter(|| aead::open_in_place(&opening_key, &nonce_bytes,
                                                0, &mut in_out, &[]))
         }
 
@@ -217,7 +219,7 @@ pub mod crypto {
             let mut handler = super::Handler::new(&key);
             let mut buf = vec![0u8; super::super::MAX_MESSAGE_SIZE];
             b.bytes = DATA_SIZE as u64;
-            b.iter(move || handler.seal(&mut buf, DATA_SIZE))
+            b.iter(|| handler.seal(&mut buf, DATA_SIZE))
         }
 
         #[bench]
@@ -227,7 +229,7 @@ pub mod crypto {
             let mut buf = vec![0u8; super::super::MAX_MESSAGE_SIZE];
             let sealed_len = handler.seal(&mut buf, DATA_SIZE).unwrap();
             b.bytes = DATA_SIZE as u64;
-            b.iter(move || handler.open(&mut buf[..sealed_len]))
+            b.iter(|| handler.open(&mut buf[..sealed_len]))
         }
     }
 }
