@@ -84,7 +84,8 @@ pub mod crypto {
                 return Err("max message size exceeded".into());
             }
 
-            let nonce = buf[..nonce_len].to_owned();
+            let nonce = &mut self._working_nonce_buf[..nonce_len];
+            nonce.copy_from_slice(&buf[..nonce_len]);
 
             aead::open_in_place(&self.opening_key, &nonce, nonce_len, buf, &[])
                 .map_err(|_| String::from("decrypt failed"))
