@@ -20,14 +20,10 @@ The server-side and client-side use the same binary (at least for now). Follow t
 
 ## macos
 1. install rust (I recommend [rustup](https://www.rustup.rs/))
-2. install libsodium
-    * **macOS**: `brew install libsodium`
-    * **everyone else**: follow [libsodium's instructions](https://download.libsodium.org/doc/installation/index.html). I believe in you.
 3. `cargo install shoop`
 
 ## debian (and, basically, any other linux)
 1. install build dependencies `sudo apt install build-essentials pkg-config`
-2. install libsodium `sudo apt install libsodium-dev libsodium13`
 3. install rust via rustup `curl https://sh.rustup.rs -sSf | sh`
 4. source cargo env variables `source $HOME/.cargo/env`
 5. build and install shoop `source $HOME/.cargo/env`
