@@ -30,7 +30,7 @@ use log::{LogRecord, LogLevel, LogMetadata};
 use std::net::{SocketAddr, IpAddr};
 use std::fs::File;
 use std::io;
-use std::io::{Cursor, Error, Seek, SeekFrom, Read, Write};
+use std::io::{Cursor, Error, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::{str, env, thread, fmt};
 use std::str::FromStr;
@@ -284,7 +284,7 @@ impl Server {
                 Server::daemonize();
                 info!("got request: serve \"{}\" on range {}", filename, port_range);
                 info!("sent response: shoop 0 {} {} <key redacted>", ip, port);
-                let mut conn = connection::Server::new(IpAddr::from_str(&ip).unwrap(), port, &keybytes);
+                let conn = connection::Server::new(IpAddr::from_str(&ip).unwrap(), port, &keybytes);
                 Ok(Server {
                     ip: ip,
                     conn: conn,

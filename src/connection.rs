@@ -50,9 +50,8 @@ pub mod crypto {
 
 
     pub fn gen_key() -> Vec<u8> {
-        let rand = SystemRandom::new();
         let mut keybytes = vec![0u8; ALGORITHM.key_len()];
-        RAND.fill(&mut keybytes);
+        RAND.fill(&mut keybytes).unwrap();
         keybytes
     }
 

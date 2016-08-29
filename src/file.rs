@@ -10,7 +10,6 @@ pub struct Writer {
 }
 
 pub struct Reader {
-    thread: thread::JoinHandle<()>,
     pub rx: mpsc::Receiver<ReadMsg>,
 }
 
@@ -76,22 +75,23 @@ impl Writer {
 impl Reader {
     pub fn new(filename: String) -> Reader {
         let (tx, rx) = mpsc::sync_channel(1024);
-        let t = thread::spawn(move || {
+        let _ = thread::spawn(move || {
             let mut f = File::open(filename).unwrap();
             let mut payload = vec![0; 1300];
             f.seek(SeekFrom::Start(0)).unwrap();
             loop {
                 match f.read(&mut payload) {
                     Ok(0) => {
-                        tx.send(ReadMsg::Finish);
+                        tx.send(ReadMsg::Finish).unwrap();
+                        break;
                     }
                     Ok(read) => {
                         let mut owned = Vec::with_capacity(read);
                         owned.extend_from_slice(&payload[..read]);
-                        tx.send(ReadMsg::Read(owned));
+                        tx.send(ReadMsg::Read(owned)).unwrap();
                     }
                     Err(_) => {
-                        tx.send(ReadMsg::Error);
+                        tx.send(ReadMsg::Error).unwrap();
                         panic!("ruh roh");
                     }
                 }
@@ -99,7 +99,6 @@ impl Reader {
         });
 
         Reader {
-            thread: t,
             rx: rx,
         }
     }
