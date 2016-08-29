@@ -610,6 +610,7 @@ impl Client {
                 filesize = filesize.or_else(|| Some(rdr.read_u64::<LittleEndian>().unwrap()));
                 buf = rdr.into_inner();
                 pb.size(filesize.unwrap());
+                pb.add(offset);
                 pb.message(format!("{}  ",
                            dest_path.file_name().unwrap().to_string_lossy().blue()));
                 match recv_file(&mut conn,
