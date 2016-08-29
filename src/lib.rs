@@ -377,9 +377,10 @@ impl Server {
 
     fn send_file<T: Transceiver>(&mut self, client: &mut T) -> Result<(), ShoopErr> {
         let mut buf = vec![0u8; connection::MAX_MESSAGE_SIZE];
-        let recv_len = match client.recv(&mut buf[..]) {
-            Ok(hdr) => hdr,
+        match client.recv(&mut buf[..]) {
+            Ok(i) if i < 8 => return Err(ShoopErr::new(ShoopErrKind::Severed, &format!("msg too short"), 0)),
             Err(e) => return Err(ShoopErr::new(ShoopErrKind::Severed, &format!("0-length msg received. {:?}", e), 0)),
+            _ => {}
         };
         let mut rdr = Cursor::new(buf);
         let offset = rdr.read_u64::<LittleEndian>().unwrap();
@@ -402,7 +403,6 @@ impl Server {
         }
 
         let reader = file::Reader::new(self.filename.clone());
-        let mut payload = vec![0; 1300];
         info!("sending file...");
         loop {
             match reader.rx.recv() {
