@@ -656,11 +656,21 @@ fn recv_file<T: Transceiver>(conn: &mut T,
     let mut elapsed_bytes = 0u64;
     let buf = &mut [0u8; connection::MAX_MESSAGE_SIZE];
     loop {
-        let len = try!(conn.recv(buf)
-            .map_err(|e| ShoopErr::new(ShoopErrKind::Severed, &format!("{:?}", e), total)));
-        if len < 1 {
-            return Err(ShoopErr::new(ShoopErrKind::Severed, "empty msg", total));
-        }
+        let len = match conn.recv(buf) {
+            Ok(len) if len > 0 => {
+                len
+            }
+            Ok(_) => {
+                f.close();
+                return Err(ShoopErr::new(ShoopErrKind::Severed,
+                                         "empty msg", total))
+            }
+            Err(e) => {
+                f.close();
+                return Err(ShoopErr::new(ShoopErrKind::Severed,
+                                         &format!("{:?}", e), total))
+            }
+        };
 
         total += len as u64;
         elapsed_bytes += len as u64;
