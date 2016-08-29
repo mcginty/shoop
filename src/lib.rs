@@ -8,7 +8,7 @@ extern crate pbr;
 extern crate getopts;
 extern crate unix_daemonize;
 extern crate byteorder;
-extern crate udt;
+extern crate utp;
 extern crate ring;
 extern crate time;
 extern crate rustc_serialize;
@@ -302,8 +302,6 @@ impl Server {
     }
 
     pub fn start(&mut self, mode: TransferMode) {
-        self.conn.listen().unwrap();
-
         let mut connection_count: usize = 0;
         info!("listening...");
         loop {
@@ -583,15 +581,16 @@ impl Client {
 
         loop {
             overprint!(" - opening UDT connection...");
-            let mut conn = connection::Client::new(addr, &keybytes);
-            match conn.connect() {
-                Ok(()) => {
+            let mut conn = match connection::Client::connect(addr, &keybytes) {
+                Ok(c) => {
                     overprint!(" - connection opened, shakin' hands, makin' frands");
+                    c
                 }
                 Err(e) => {
                     die!("errrrrrrr connecting to {}:{} - {:?}", addr.ip(), addr.port(), e);
                 }
-            }
+            };
+
             let mut buf = vec![0u8; connection::MAX_MESSAGE_SIZE];
             let mut wtr = vec![];
             wtr.write_u64::<LittleEndian>(offset).unwrap();

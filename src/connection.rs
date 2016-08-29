@@ -1,13 +1,15 @@
 extern crate ring;
-extern crate udt;
+extern crate utp;
 
+use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
 use std::net::{UdpSocket, SocketAddr, IpAddr};
 use std::str;
 use std::fmt;
-use udt::{UdtSocket, UdtError, UdtOpts, SocketType, SocketFamily};
+use std::io;
+use std::io::{Cursor, ErrorKind, Write, Read};
+use utp::{UtpListener, UtpStream};
 
 // TODO config
-const UDT_BUF_SIZE: i32 = 4096000;
 pub const MAX_MESSAGE_SIZE: usize = 1024000;
 
 pub mod crypto {
@@ -257,33 +259,29 @@ pub mod crypto {
     }
 }
 
-fn new_udt_socket() -> UdtSocket {
-    udt::init();
-    let sock = UdtSocket::new(SocketFamily::AFInet, SocketType::Datagram).unwrap();
-    sock.setsockopt(UdtOpts::UDP_RCVBUF, UDT_BUF_SIZE).unwrap();
-    sock.setsockopt(UdtOpts::UDP_SNDBUF, UDT_BUF_SIZE).unwrap();
-    sock
-}
-
-fn send(sock: &UdtSocket, crypto: &mut crypto::Handler, buf: &mut [u8], len: usize) -> Result<(), UdtError> {
+fn send(sock: &mut UtpStream, crypto: &mut crypto::Handler, buf: &mut [u8], len: usize) -> io::Result<()> {
     // FIXME don't unwrap, create an Error struct that can handle everything
     if let Ok(sealed_len) = crypto.seal(buf, len) {
-        sock.sendmsg(&buf[..sealed_len]).map(|_| ())
+        let u32len = sealed_len as u32;
+        let mut wtr = vec![];
+        wtr.write_u32::<LittleEndian>(u32len).unwrap();
+        try!(sock.write_all(&wtr));
+        try!(sock.write_all(&buf[..u32len as usize]));
+        Ok(())
     } else {
-        Err(UdtError {
-            err_code: -1,
-            err_msg: "encryption failure".into(),
-        })
+        Err(io::Error::new(ErrorKind::Other, "encryption failure"))
     }
 }
 
-fn recv(sock: &UdtSocket, crypto: &mut crypto::Handler, buf: &mut [u8]) -> Result<usize, UdtError> {
-    let size = try!(sock.recvmsg(buf));
-    crypto.open(&mut buf[..size]).map_err(|_| {
-        UdtError {
-            err_code: -1,
-            err_msg: String::from("decryption failure"),
-        }
+fn recv(sock: &mut UtpStream, crypto: &mut crypto::Handler, buf: &mut [u8]) -> io::Result<usize> {
+    let mut len_buf = vec![0u8; 4];
+    try!(sock.read_exact(&mut len_buf)); // u32
+    let mut rdr = Cursor::new(len_buf);
+    let len = rdr.read_u32::<LittleEndian>().unwrap() as usize;
+
+    try!(sock.read_exact(&mut buf[..len]));
+    crypto.open(&mut buf[..len]).map_err(|_| {
+        io::Error::new(ErrorKind::Other, "decryption failure")
     })
 }
 
@@ -298,65 +296,59 @@ pub struct Server {
     pub ip_addr: IpAddr,
     pub port: u16,
     crypto: crypto::Handler,
-    sock: UdtSocket,
+    sock: UtpListener,
 }
 
 pub struct Client {
-    addr: SocketAddr,
-    sock: UdtSocket,
+    sock: UtpStream,
     crypto: crypto::Handler,
 }
 
 pub struct ServerConnection {
     crypto: crypto::Handler,
-    sock: UdtSocket,
+    peer: SocketAddr,
+    sock: UtpStream,
 }
 
 impl Client {
-    pub fn new(addr: SocketAddr, key: &[u8]) -> Client {
-        let sock = new_udt_socket();
-        Client {
-            addr: addr,
-            sock: sock,
+    pub fn connect(addr: SocketAddr, key: &[u8]) -> io::Result<Client> {
+        Ok(Client {
+            sock: try!(UtpStream::connect(addr)),
             crypto: crypto::Handler::new(key),
-        }
-    }
-
-    pub fn connect(&self) -> Result<(), UdtError> {
-        self.sock.connect(self.addr)
+        })
     }
 }
 
 pub trait Transceiver {
-    fn send(&mut self, buf: &mut [u8], len: usize) -> Result<(), UdtError>;
-    fn recv(&mut self, buf: &mut [u8]) -> Result<usize, UdtError>;
-    fn close(&self) -> Result<(), UdtError>;
+    fn send(&mut self, buf: &mut [u8], len: usize) -> io::Result<()>;
+    fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize>;
+    fn close(&mut self) -> io::Result<()>;
 }
 
 impl Transceiver for Client {
-    fn send(&mut self, buf: &mut [u8], len: usize) -> Result<(), UdtError> {
-        send(&self.sock, &mut self.crypto, buf, len)
+    fn send(&mut self, buf: &mut [u8], len: usize) -> io::Result<()> {
+        send(&mut self.sock, &mut self.crypto, buf, len)
     }
 
-    fn recv(&mut self, buf: &mut [u8]) -> Result<usize, UdtError> {
-        recv(&self.sock, &mut self.crypto, buf)
+    fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        recv(&mut self.sock, &mut self.crypto, buf)
     }
 
-    fn close(&self) -> Result<(), UdtError> {
+    fn close(&mut self) -> io::Result<()> {
         self.sock.close()
     }
 }
 
 impl Transceiver for ServerConnection {
-    fn send(&mut self, buf: &mut [u8], len: usize) -> Result<(), UdtError> {
-        send(&self.sock, &mut self.crypto, buf, len)
+    fn send(&mut self, buf: &mut [u8], len: usize) -> io::Result<()> {
+        send(&mut self.sock, &mut self.crypto, buf, len)
     }
 
-    fn recv(&mut self, buf: &mut [u8]) -> Result<usize, UdtError> {
-        recv(&self.sock, &mut self.crypto, buf)
+    fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        recv(&mut self.sock, &mut self.crypto, buf)
     }
 
-    fn close(&self) -> Result<(), UdtError> {
+    fn close(&mut self) -> io::Result<()> {
         self.sock.close()
     }
 }
@@ -372,8 +364,7 @@ impl Server {
     }
 
     pub fn new(ip_addr: IpAddr, port: u16, key: &[u8]) -> Server {
-        let sock = new_udt_socket();
-        sock.bind(SocketAddr::new(ip_addr, port)).unwrap();
+        let sock = UtpListener::bind(SocketAddr::new(ip_addr, port)).unwrap();
         Server {
             sock: sock,
             ip_addr: ip_addr,
@@ -382,23 +373,20 @@ impl Server {
         }
     }
 
-    pub fn listen(&self) -> Result<(), UdtError> {
-        self.sock.listen(1)
-    }
-
-    pub fn accept(&mut self) -> Result<ServerConnection, UdtError> {
-        self.sock.accept().map(move |(sock, _)| {
+    pub fn accept(&mut self) -> io::Result<ServerConnection> {
+        self.sock.accept().map(move |(sock, peer)| {
             ServerConnection {
                 crypto: self.crypto.clone(),
-                sock: sock,
+                peer: peer,
+                sock: UtpStream::from(sock),
             }
         })
     }
 }
 
 impl ServerConnection {
-    pub fn getpeer(&self) -> Result<SocketAddr, UdtError> {
-        self.sock.getpeername()
+    pub fn getpeer(&self) -> SocketAddr {
+        self.peer
     }
 }
 
