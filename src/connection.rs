@@ -384,7 +384,7 @@ impl Server {
     }
 
     pub fn listen(&self) -> Result<(), UdtError> {
-        self.sock.listen(2)
+        self.sock.listen(1)
     }
 
     pub fn accept(&mut self) -> Result<ServerConnection, UdtError> {
