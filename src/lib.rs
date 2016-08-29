@@ -158,7 +158,9 @@ impl log::Log for ShoopLogger {
             };
 
             let pidinfo = match self.mode {
-                ShoopMode::Server => format!("({}) ", self.pid),
+                ShoopMode::Server => format!("{} ({}) ",
+                                             time::now().ctime(),
+                                             self.pid)
                 ShoopMode::Client => String::new(),
             };
 

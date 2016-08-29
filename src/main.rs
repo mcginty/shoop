@@ -1,3 +1,6 @@
+#![feature(alloc_system)]
+extern crate alloc_system;
+
 #[macro_use]
 extern crate log;
 extern crate getopts;
