@@ -62,7 +62,16 @@ impl Writer {
     }
 
     pub fn write_all(&self, buf: Vec<u8>) {
-        self.tx.send(WriteMsg::Write(buf)).unwrap();
+        match self.tx.try_send(WriteMsg::Write(buf)) {
+            Err(mpsc::TrySendError::Full(d)) => {
+                warn!("file write buffer full.");
+                self.tx.send(d).unwrap();
+            }
+            Err(_) => {
+                panic!("disconnect");
+            }
+            Ok(_) => {}
+        }
     }
 
     pub fn close(self) {
@@ -90,7 +99,16 @@ impl Reader {
                     Ok(read) => {
                         let mut owned = Vec::with_capacity(read);
                         owned.extend_from_slice(&payload[..read]);
-                        tx.send(ReadMsg::Read(owned)).unwrap();
+                        match tx.try_send(ReadMsg::Read(owned)) {
+                            Err(mpsc::TrySendError::Full(d)) => {
+                                warn!("file read buffer full.");
+                                tx.send(d).unwrap();
+                            }
+                            Err(_) => {
+                                panic!("disconnect");
+                            }
+                            Ok(_) => {}
+                        }
                     }
                     Err(_) => {
                         tx.send(ReadMsg::Error).unwrap();
