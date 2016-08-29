@@ -39,7 +39,8 @@ fn do_maybe<F>(pb_maybe: &mut Option<ProgressBar<Stdout>>, f: F)
 impl Progress {
     pub fn new() -> Progress {
         let (tx, rx) = mpsc::channel();
-        let t = thread::spawn(move || {
+        let builder = thread::Builder::new().name("progress".into());
+        let t = builder.spawn(move || {
             let mut pb = None;
             let mut last_add = Instant::now();
             let mut frame_total: u64 = 0;
@@ -80,7 +81,7 @@ impl Progress {
                     }
                 }
             }
-        });
+        }).unwrap();
         Progress {
             thread: t,
             tx: tx,
