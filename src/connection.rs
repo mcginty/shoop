@@ -19,7 +19,8 @@ pub mod crypto {
     static ALGORITHM: &'static Algorithm = &aead::AES_256_GCM;
 
     pub struct Handler {
-        _working_buf: [u8; super::MAX_MESSAGE_SIZE],
+        _working_nonce_buf: [u8; 32],
+        _working_seal_buf: [u8; super::MAX_MESSAGE_SIZE],
         rand: SystemRandom,
         opening_key: OpeningKey,
         sealing_key: SealingKey,
@@ -35,7 +36,8 @@ pub mod crypto {
     impl Handler {
         pub fn new(key: &[u8]) -> Handler {
             Handler {
-                _working_buf: [0u8; super::MAX_MESSAGE_SIZE],
+                _working_seal_buf: [0u8; super::MAX_MESSAGE_SIZE],
+                _working_nonce_buf: [0u8; 32],
                 rand: SystemRandom::new(),
                 opening_key: aead::OpeningKey::new(ALGORITHM, key).unwrap(),
                 sealing_key: aead::SealingKey::new(ALGORITHM, key).unwrap(),
@@ -52,10 +54,10 @@ pub mod crypto {
             assert!(len <= buf.len() - max_suffix_len,
                     "Buffer doesn't have enough suffix padding.");
 
-            let mut nonce = vec![0u8; nonce_len];
+            let mut nonce = &mut self._working_nonce_buf[..nonce_len];
             self.rand.fill(&mut nonce).unwrap();
 
-            let mut sealed = vec![0u8; len + max_suffix_len];
+            let mut sealed = &mut self._working_seal_buf[..len + max_suffix_len];
             sealed[0..len].copy_from_slice(&buf[..len]);
             match aead::seal_in_place(&self.sealing_key,
                                       &nonce,
