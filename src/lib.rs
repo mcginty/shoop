@@ -307,7 +307,6 @@ impl Server {
         let mut connection_count: usize = 0;
         info!("listening...");
         loop {
-            info!("waiting for connection...");
             let (tx, rx) = mpsc::channel();
             thread::spawn(move || {
                 let (timeout, err) = if connection_count == 0 {
@@ -324,6 +323,7 @@ impl Server {
                     std::process::exit(1);
                 }
             });
+            info!("waiting for connection...");
             let mut client = match self.conn.accept() {
                 Ok(client) => client,
                 Err(e) => {
