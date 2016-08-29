@@ -160,7 +160,7 @@ impl log::Log for ShoopLogger {
             let pidinfo = match self.mode {
                 ShoopMode::Server => format!("{} ({}) ",
                                              time::now().ctime(),
-                                             self.pid)
+                                             self.pid),
                 ShoopMode::Client => String::new(),
             };
 
