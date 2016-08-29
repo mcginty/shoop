@@ -322,26 +322,24 @@ impl Server {
                 }
             });
             info!("waiting for connection...");
-            let mut client = match self.conn.accept() {
-                Ok(client) => client,
-                Err(e) => {
-                    die!("unexpected error on sock accept() {:?}", e);
-                }
-            };
-            connection_count += 1;
-            tx.send(()).unwrap();
-            info!("accepted connection with {:?}!", client.getpeer());
+            // let mut client = match self.conn.accept() {
+            //     Ok(client) => client,
+            //     Err(e) => {
+            //         die!("unexpected error on sock accept() {:?}", e);
+            //     }
+            // };
+            // connection_count += 1;
             match mode {
                 TransferMode::Send => {
-                    match self.send_file(&mut client) {
+                    match self.send_file(&tx) {
                         Ok(_) => {
                             info!("done sending file");
-                            let _ = client.close();
+                            let _ = self.conn.close();
                             break;
                         }
                         Err(ShoopErr { kind: ShoopErrKind::Severed, msg, finished }) => {
                             info!("connection severed, msg: {:?}, finished: {}", msg, finished);
-                            let _ = client.close();
+                            let _ = self.conn.close();
                             continue;
                         }
                         Err(ShoopErr { kind: ShoopErrKind::Fatal, msg, finished }) => {
@@ -372,13 +370,14 @@ impl Server {
         info!("stopped listening.");
     }
 
-    fn send_file<T: Transceiver>(&mut self, client: &mut T) -> Result<(), ShoopErr> {
+    fn send_file(&mut self, tx: &mpsc::Sender<()>) -> Result<(), ShoopErr> {
         let mut buf = vec![0u8; connection::MAX_MESSAGE_SIZE];
-        match client.recv(&mut buf[..]) {
+        match self.conn.recv(&mut buf[..]) {
             Ok(i) if i < 8 => return Err(ShoopErr::new(ShoopErrKind::Severed, &format!("msg too short"), 0)),
             Err(e) => return Err(ShoopErr::new(ShoopErrKind::Severed, &format!("0-length msg received. {:?}", e), 0)),
             _ => {}
         };
+        tx.send(()).unwrap();
         let mut rdr = Cursor::new(buf);
         let offset = rdr.read_u64::<LittleEndian>().unwrap();
         buf = rdr.into_inner();
@@ -392,7 +391,7 @@ impl Server {
         let mut wtr = vec![];
         wtr.write_u64::<LittleEndian>(remaining).unwrap();
         buf[..wtr.len()].copy_from_slice(&wtr);
-        match client.send(&mut buf, wtr.len()) {
+        match self.conn.send(&mut buf, wtr.len()) {
             Ok(()) => info!("wrote filesize header."),
             Err(e) => {
                 return Err(ShoopErr::new(ShoopErrKind::Severed, &format!("failed to write filesize hdr. {:?}", e), remaining))
@@ -408,30 +407,30 @@ impl Server {
                 }
                 Ok(ReadMsg::Read(payload)) => {
                     buf[..payload.len()].copy_from_slice(&payload);
-                    if let Err(e) = client.send(&mut buf, payload.len()) {
+                    if let Err(e) = self.conn.send(&mut buf, payload.len()) {
                         return Err(ShoopErr::new(ShoopErrKind::Severed,
                                                  &format!("{:?}", e),
                                                  remaining));
                     }
                 }
                 Err(_) | Ok(ReadMsg::Error) => {
-                    client.close().expect("Error closing stream");
+                    self.conn.close().expect("Error closing stream");
                     error!("failed to read from file");
                     panic!("failed to read from file");
                 }
             }
         }
 
-        if let Err(e) = client.recv(&mut buf[..]) {
-            warn!("finished sending, but failed getting client confirmation");
+        if let Err(e) = self.conn.recv(&mut buf[..]) {
+            warn!("finished sending, but failed getting self confirmation");
             return Err(ShoopErr::new(ShoopErrKind::Severed,
                                      &format!("{:?}", e),
                                      remaining))
         }
 
-        info!("got client finish confirmation.");
+        info!("got self finish confirmation.");
 
-        client.close().expect("Error closing stream.");
+        self.conn.close().expect("Error closing stream.");
         Ok(())
     }
 }

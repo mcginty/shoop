@@ -7,7 +7,7 @@ use std::str;
 use std::fmt;
 use std::io;
 use std::io::{Cursor, ErrorKind, Write, Read};
-use utp::{UtpListener, UtpStream};
+use utp::{UtpListener, UtpStream, UtpSocket};
 
 // TODO config
 pub const MAX_MESSAGE_SIZE: usize = 1024000;
@@ -296,7 +296,7 @@ pub struct Server {
     pub ip_addr: IpAddr,
     pub port: u16,
     crypto: crypto::Handler,
-    sock: UtpListener,
+    sock: UtpStream,
 }
 
 pub struct Client {
@@ -312,8 +312,11 @@ pub struct ServerConnection {
 
 impl Client {
     pub fn connect(addr: SocketAddr, key: &[u8]) -> io::Result<Client> {
+        println!("connecting");
+        let sock = try!(UtpSocket::connect(addr));
+        println!("connected");
         Ok(Client {
-            sock: try!(UtpStream::connect(addr)),
+            sock: UtpStream::from(sock),
             crypto: crypto::Handler::new(key),
         })
     }
@@ -339,7 +342,7 @@ impl Transceiver for Client {
     }
 }
 
-impl Transceiver for ServerConnection {
+impl Transceiver for Server {
     fn send(&mut self, buf: &mut [u8], len: usize) -> io::Result<()> {
         send(&mut self.sock, &mut self.crypto, buf, len)
     }
@@ -364,7 +367,7 @@ impl Server {
     }
 
     pub fn new(ip_addr: IpAddr, port: u16, key: &[u8]) -> Server {
-        let sock = UtpListener::bind(SocketAddr::new(ip_addr, port)).unwrap();
+        let sock = UtpStream::bind(SocketAddr::new(ip_addr, port)).unwrap();
         Server {
             sock: sock,
             ip_addr: ip_addr,
@@ -373,15 +376,15 @@ impl Server {
         }
     }
 
-    pub fn accept(&mut self) -> io::Result<ServerConnection> {
-        self.sock.accept().map(move |(sock, peer)| {
-            ServerConnection {
-                crypto: self.crypto.clone(),
-                peer: peer,
-                sock: UtpStream::from(sock),
-            }
-        })
-    }
+    // pub fn accept(&mut self) -> io::Result<ServerConnection> {
+    //     self.sock.accept().map(move |(sock, peer)| {
+    //         ServerConnection {
+    //             crypto: self.crypto.clone(),
+    //             peer: peer,
+    //             sock: UtpStream::from(sock),
+    //         }
+    //     })
+    // }
 }
 
 impl ServerConnection {
