@@ -7,10 +7,10 @@ use std::process::Command;
 use std::str::FromStr;
 use rustc_serialize::hex::FromHex;
 
-pub struct Connection<'a> {
+pub struct Connection {
     hostname: String,
     path: PathBuf,
-    port_range: &'a PortRange,
+    port_range: PortRange,
 }
 
 pub struct Response {
@@ -40,12 +40,12 @@ impl Error {
     }
 }
 
-impl<'a> Connection<'a> {
-    pub fn new<S: Into<String>>(hostname: S, path: PathBuf, port_range: &'a PortRange) -> Connection {
+impl Connection {
+    pub fn new<S: Into<String>>(hostname: S, path: PathBuf, port_range: &PortRange) -> Connection {
         Connection {
             hostname: hostname.into(),
             path: path,
-            port_range: port_range,
+            port_range: port_range.to_owned(),
         }
     }
 

@@ -5,8 +5,6 @@ use std::net::{UdpSocket, SocketAddr, IpAddr};
 use std::str;
 use std::fmt;
 use udt::{UdtSocket, UdtError, UdtOpts, SocketType, SocketFamily};
-use ring::aead;
-use ring::rand;
 
 // TODO config
 const UDT_BUF_SIZE: i32 = 4096000;
@@ -15,32 +13,55 @@ pub const MAX_MESSAGE_SIZE: usize = 1024000;
 pub mod crypto {
     use ring::aead;
     use ring::aead::{SealingKey, OpeningKey, Algorithm};
-    use ring::rand::{SystemRandom, SecureRandom};
+    use ring::rand::SystemRandom;
     static ALGORITHM: &'static Algorithm = &aead::AES_128_GCM;
+    lazy_static! {
+        static ref RAND: SystemRandom = SystemRandom::new();
+    }
 
+    pub struct Key {
+        bytes: Vec<u8>,
+        opening: OpeningKey,
+        sealing: SealingKey,
+    }
+
+    impl Key {
+        pub fn new(bytes: &[u8]) -> Key {
+            Key {
+                bytes: bytes.to_owned(),
+                opening: OpeningKey::new(ALGORITHM, &bytes).unwrap(),
+                sealing: SealingKey::new(ALGORITHM, &bytes).unwrap(),
+            }
+        }
+    }
+
+    impl Clone for Key {
+        fn clone(&self) -> Key {
+            Key::new(&self.bytes)
+        }
+    }
+
+    #[derive(Clone)]
     pub struct Handler {
         _working_nonce_buf: [u8; 32],
-        _working_seal_buf: [u8; super::MAX_MESSAGE_SIZE],
-        rand: SystemRandom,
-        opening_key: OpeningKey,
-        sealing_key: SealingKey,
+        _working_seal_buf: Vec<u8>,
+        key: Key,
     }
+
 
     pub fn gen_key() -> Vec<u8> {
         let rand = SystemRandom::new();
         let mut keybytes = vec![0u8; ALGORITHM.key_len()];
-        rand.fill(&mut keybytes);
+        RAND.fill(&mut keybytes);
         keybytes
     }
 
     impl Handler {
         pub fn new(key: &[u8]) -> Handler {
             Handler {
-                _working_seal_buf: [0u8; super::MAX_MESSAGE_SIZE],
+                _working_seal_buf: vec![0u8; super::MAX_MESSAGE_SIZE],
                 _working_nonce_buf: [0u8; 32],
-                rand: SystemRandom::new(),
-                opening_key: aead::OpeningKey::new(ALGORITHM, key).unwrap(),
-                sealing_key: aead::SealingKey::new(ALGORITHM, key).unwrap(),
+                key: Key::new(key),
             }
         }
 
@@ -55,11 +76,11 @@ pub mod crypto {
                     "Buffer doesn't have enough suffix padding.");
 
             let mut nonce = &mut self._working_nonce_buf[..nonce_len];
-            self.rand.fill(&mut nonce).unwrap();
+            RAND.fill(&mut nonce).unwrap();
 
             let mut sealed = &mut self._working_seal_buf[..len + max_suffix_len];
             sealed[0..len].copy_from_slice(&buf[..len]);
-            match aead::seal_in_place(&self.sealing_key,
+            match aead::seal_in_place(&self.key.sealing,
                                       &nonce,
                                       &mut sealed,
                                       max_suffix_len,
@@ -69,7 +90,7 @@ pub mod crypto {
                     buf[nonce_len..nonce_len+seal_len].copy_from_slice(&sealed[..seal_len]);
                     Ok(nonce_len + seal_len)
                 }
-                Err(e) => {
+                Err(_) => {
                     Err(())
                 }
             }
@@ -87,7 +108,7 @@ pub mod crypto {
             let nonce = &mut self._working_nonce_buf[..nonce_len];
             nonce.copy_from_slice(&buf[..nonce_len]);
 
-            aead::open_in_place(&self.opening_key, &nonce, nonce_len, buf, &[])
+            aead::open_in_place(&self.key.opening, &nonce, nonce_len, buf, &[])
                 .map_err(|_| String::from("decrypt failed"))
         }
     }
@@ -245,40 +266,34 @@ fn new_udt_socket() -> UdtSocket {
     sock
 }
 
-fn send(sock: &UdtSocket, key: &aead::SealingKey, buf: &mut [u8], len: usize) -> Result<(), UdtError> {
-    unimplemented!();
+fn send(sock: &UdtSocket, crypto: &mut crypto::Handler, buf: &mut [u8], len: usize) -> Result<(), UdtError> {
     // FIXME don't unwrap, create an Error struct that can handle everything
-    // if let Ok(sealed_len) = crypto::seal(buf, len, key) {
-    //     sock.sendmsg(&buf[..sealed_len]).map(|_| ())
-    // } else {
-    //     Err(UdtError {
-    //         err_code: -1,
-    //         err_msg: "encryption failure".into(),
-    //     })
-    // }
+    if let Ok(sealed_len) = crypto.seal(buf, len) {
+        sock.sendmsg(&buf[..sealed_len]).map(|_| ())
+    } else {
+        Err(UdtError {
+            err_code: -1,
+            err_msg: "encryption failure".into(),
+        })
+    }
 }
 
-fn recv(sock: &UdtSocket, key: &aead::OpeningKey, buf: &mut [u8]) -> Result<usize, UdtError> {
-    unimplemented!();
-    // let size = try!(sock.recvmsg(buf));
-    // crypto::open(&mut buf[..size], key).map_err(|_| {
-    //     UdtError {
-    //         err_code: -1,
-    //         err_msg: String::from("decryption failure"),
-    //     }
-    // })
+fn recv(sock: &UdtSocket, crypto: &mut crypto::Handler, buf: &mut [u8]) -> Result<usize, UdtError> {
+    let size = try!(sock.recvmsg(buf));
+    crypto.open(&mut buf[..size]).map_err(|_| {
+        UdtError {
+            err_code: -1,
+            err_msg: String::from("decryption failure"),
+        }
+    })
 }
 
+#[derive(Copy,Clone)]
 pub struct PortRange {
     start: u16,
     end: u16,
 }
 
-pub trait Transceiver {
-    fn send(&self, buf: &[u8]) -> Result<(), UdtError>;
-    fn recv(&self, buf: &mut [u8]) -> Result<usize, UdtError>;
-    fn close(&self) -> Result<(), UdtError>;
-}
 
 pub struct Server {
     pub ip_addr: IpAddr,
@@ -293,8 +308,8 @@ pub struct Client {
     crypto: crypto::Handler,
 }
 
-pub struct ServerConnection<'a> {
-    crypto: &'a crypto::Handler,
+pub struct ServerConnection {
+    crypto: crypto::Handler,
     sock: UdtSocket,
 }
 
@@ -313,15 +328,33 @@ impl Client {
     }
 }
 
+pub trait Transceiver {
+    fn send(&mut self, buf: &mut [u8], len: usize) -> Result<(), UdtError>;
+    fn recv(&mut self, buf: &mut [u8]) -> Result<usize, UdtError>;
+    fn close(&self) -> Result<(), UdtError>;
+}
+
 impl Transceiver for Client {
-    fn send(&self, buf: &[u8]) -> Result<(), UdtError> {
-        unimplemented!();
-        // send(&self.sock, &self.sealing_key, buf)
+    fn send(&mut self, buf: &mut [u8], len: usize) -> Result<(), UdtError> {
+        send(&self.sock, &mut self.crypto, buf, len)
     }
 
-    fn recv(&self, buf: &mut [u8]) -> Result<usize, UdtError> {
-        unimplemented!();
-        // recv(&self.sock, &self.opening_key, buf)
+    fn recv(&mut self, buf: &mut [u8]) -> Result<usize, UdtError> {
+        recv(&self.sock, &mut self.crypto, buf)
+    }
+
+    fn close(&self) -> Result<(), UdtError> {
+        self.sock.close()
+    }
+}
+
+impl Transceiver for ServerConnection {
+    fn send(&mut self, buf: &mut [u8], len: usize) -> Result<(), UdtError> {
+        send(&self.sock, &mut self.crypto, buf, len)
+    }
+
+    fn recv(&mut self, buf: &mut [u8]) -> Result<usize, UdtError> {
+        recv(&self.sock, &mut self.crypto, buf)
     }
 
     fn close(&self) -> Result<(), UdtError> {
@@ -354,42 +387,26 @@ impl Server {
         self.sock.listen(2)
     }
 
-    pub fn accept(&self) -> Result<ServerConnection, UdtError> {
-        self.sock.accept().map(|(sock, _)| {
+    pub fn accept(&mut self) -> Result<ServerConnection, UdtError> {
+        self.sock.accept().map(move |(sock, _)| {
             ServerConnection {
-                crypto: &self.crypto,
+                crypto: self.crypto.clone(),
                 sock: sock,
             }
         })
     }
 }
 
-impl<'a> ServerConnection<'a> {
+impl ServerConnection {
     pub fn getpeer(&self) -> Result<SocketAddr, UdtError> {
         self.sock.getpeername()
     }
 }
 
-impl<'a> Transceiver for ServerConnection<'a> {
-    fn send(&self, buf: &[u8]) -> Result<(), UdtError> {
-        unimplemented!();
-        // send(&self.sock, self.key, buf)
-    }
-
-    fn recv(&self, buf: &mut [u8]) -> Result<usize, UdtError> {
-        unimplemented!();
-        // recv(&self.sock, self.key, buf)
-    }
-
-    fn close(&self) -> Result<(), UdtError> {
-        self.sock.close()
-    }
-}
-
-impl<'a> PortRange {
-    fn new(start: u16, end: u16) -> Result<PortRange, &'a str> {
+impl PortRange {
+    fn new(start: u16, end: u16) -> Result<PortRange, String> {
         if start > end {
-            Err("range end must be greater than or equal to start")
+            Err("range end must be greater than or equal to start".into())
         } else {
             Ok(PortRange {
                 start: start,
@@ -398,14 +415,14 @@ impl<'a> PortRange {
         }
     }
 
-    pub fn from(s: &str) -> Result<PortRange, &'a str> {
+    pub fn from(s: &str) -> Result<PortRange, String> {
         let sections: Vec<&str> = s.split('-').collect();
         if sections.len() != 2 {
-            return Err("Range must be specified in the form of \"<start>-<end>\"");
+            return Err("Range must be specified in the form of \"<start>-<end>\"".into());
         }
         let (start, end) = (sections[0].parse::<u16>(), sections[1].parse::<u16>());
         if start.is_err() || end.is_err() {
-            return Err("improperly formatted port range");
+            return Err("improperly formatted port range".into());
         }
         PortRange::new(start.unwrap(), end.unwrap())
     }

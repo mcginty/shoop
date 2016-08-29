@@ -88,7 +88,7 @@ fn main() {
                 TransferMode::Send
             };
 
-            if let Ok(server) = Server::new(port_range, &raw_source) {
+            if let Ok(mut server) = Server::new(port_range, &raw_source) {
                 server.start(transfer_mode);
                 info!("exiting.");
             }
@@ -104,7 +104,7 @@ fn main() {
             let dest = Target::from(raw_dest.clone());
 
             match Client::new(source, dest, port_range) {
-                Ok(client) => client.start(matches.opt_present("f")),
+                Ok(mut client) => client.start(matches.opt_present("f")),
                 Err(e) => error!("{}", e),
             }
         }

@@ -1,6 +1,9 @@
+#![feature(const_fn)]
 #![cfg_attr(all(feature = "nightly", test), feature(test))]
 #[macro_use]
 extern crate log;
+#[macro_use]
+extern crate lazy_static;
 extern crate libc;
 extern crate pbr;
 extern crate getopts;
@@ -282,7 +285,7 @@ impl Server {
                 Server::daemonize();
                 info!("got request: serve \"{}\" on range {}", filename, port_range);
                 info!("sent response: shoop 0 {} {} <key redacted>", ip, port);
-                let conn = connection::Server::new(IpAddr::from_str(&ip).unwrap(), port, &keybytes);
+                let mut conn = connection::Server::new(IpAddr::from_str(&ip).unwrap(), port, &keybytes);
                 Ok(Server {
                     ip: ip,
                     conn: conn,
@@ -299,7 +302,7 @@ impl Server {
         }
     }
 
-    pub fn start(&self, mode: TransferMode) {
+    pub fn start(&mut self, mode: TransferMode) {
         self.conn.listen().unwrap();
 
         let mut connection_count: usize = 0;
@@ -322,7 +325,7 @@ impl Server {
                     std::process::exit(1);
                 }
             });
-            let client = match self.conn.accept() {
+            let mut client = match self.conn.accept() {
                 Ok(client) => client,
                 Err(e) => {
                     die!("unexpected error on sock accept() {:?}", e);
@@ -333,7 +336,7 @@ impl Server {
             info!("accepted connection with {:?}!", client.getpeer());
             match mode {
                 TransferMode::Send => {
-                    match self.send_file(&client) {
+                    match self.send_file(&mut client) {
                         Ok(_) => {
                             info!("done sending file");
                             let _ = client.close();
@@ -372,7 +375,7 @@ impl Server {
         info!("stopped listening.");
     }
 
-    fn send_file<T: Transceiver>(&self, client: &T) -> Result<(), ShoopErr> {
+    fn send_file<T: Transceiver>(&mut self, client: &mut T) -> Result<(), ShoopErr> {
         let mut buf = Vec::with_capacity(connection::MAX_MESSAGE_SIZE);
         let recv_len = match client.recv(&mut buf[..]) {
             Ok(hdr) => hdr,
@@ -390,7 +393,8 @@ impl Server {
 
         let mut wtr = vec![];
         wtr.write_u64::<LittleEndian>(remaining).unwrap();
-        match client.send(&wtr[..]) {
+        buf[..wtr.len()].copy_from_slice(&wtr);
+        match client.send(&mut buf, wtr.len()) {
             Ok(()) => info!("wrote filesize header."),
             Err(e) => {
                 return Err(ShoopErr::new(ShoopErrKind::Severed, &format!("{:?}", e), remaining))
@@ -406,7 +410,8 @@ impl Server {
                     break;
                 }
                 Ok(ReadMsg::Read(payload)) => {
-                    if let Err(e) = client.send(&payload[..]) {
+                    buf[..payload.len()].copy_from_slice(&payload);
+                    if let Err(e) = client.send(&mut buf, payload.len()) {
                         return Err(ShoopErr::new(ShoopErrKind::Severed,
                                                  &format!("{:?}", e),
                                                  remaining));
@@ -491,7 +496,7 @@ impl Client {
         })
     }
 
-    pub fn start(&self, force_dl: bool) {
+    pub fn start(&mut self, force_dl: bool) {
         let ssh = match self.transfer_state.clone() {
             TransferState::Send(..) => {
                 panic!("sending unsupported");
@@ -563,7 +568,7 @@ impl Client {
         Ok(())
     }
 
-    fn receive(&self,
+    fn receive(&mut self,
                dest_path: &PathBuf,
                force_dl: bool,
                addr: SocketAddr,
@@ -579,7 +584,7 @@ impl Client {
 
         loop {
             overprint!(" - opening UDT connection...");
-            let conn = connection::Client::new(addr, &keybytes);
+            let mut conn = connection::Client::new(addr, &keybytes);
             match conn.connect() {
                 Ok(()) => {
                     overprint!(" - connection opened, shakin' hands, makin' frands");
@@ -588,24 +593,26 @@ impl Client {
                     die!("errrrrrrr connecting to {}:{} - {:?}", addr.ip(), addr.port(), e);
                 }
             }
+            let mut buf = Vec::with_capacity(connection::MAX_MESSAGE_SIZE);
             let mut wtr = vec![];
             wtr.write_u64::<LittleEndian>(offset).unwrap();
-            if let Err(_) = conn.send(&wtr[..]) {
+            buf[..wtr.len()].copy_from_slice(&wtr);
+            if let Err(_) = conn.send(&mut buf, wtr.len()) {
                 conn.close().unwrap();
                 continue;
             }
 
-            let mut buf = Vec::with_capacity(connection::MAX_MESSAGE_SIZE);
             if let Ok(len) = conn.recv(&mut buf[..]) {
                 if len == 0 {
                     die!("failed to get filesize from server, probable timeout.");
                 }
                 let mut rdr = Cursor::new(buf);
                 filesize = filesize.or_else(|| Some(rdr.read_u64::<LittleEndian>().unwrap()));
+                buf = rdr.into_inner();
                 pb.size(filesize.unwrap());
                 pb.message(format!("{}  ",
                            dest_path.file_name().unwrap().to_string_lossy().blue()));
-                match recv_file(&conn,
+                match recv_file(&mut conn,
                                 filesize.unwrap(),
                                 path,
                                 offset,
@@ -613,7 +620,8 @@ impl Client {
                     Ok(_) => {
                         pb.message(format!("{} (done, sending confirmation)  ",
                                    dest_path.file_name().unwrap().to_string_lossy().green()));
-                        if let Err(e) = conn.send(&[0u8; 1]) {
+                        buf[0] = 0;
+                        if let Err(e) = conn.send(&mut buf, 1) {
                             warn!("failed to send close signal to server: {:?}", e);
                         }
                         pb.message(format!("{}  ",
@@ -635,7 +643,7 @@ impl Client {
     }
 }
 
-fn recv_file<T: Transceiver>(conn: &T,
+fn recv_file<T: Transceiver>(conn: &mut T,
                              filesize: u64,
                              filename: &Path,
                              offset: u64,
