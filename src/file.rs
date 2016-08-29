@@ -27,7 +27,7 @@ pub enum ReadMsg {
 
 impl Writer {
     pub fn new(filename: PathBuf) -> Writer {
-        let (tx, rx) = mpsc::sync_channel(1024);
+        let (tx, rx) = mpsc::sync_channel(1024*10);
         let builder = thread::Builder::new().name("file_writer".into());
         let t = builder.spawn(move || {
             let mut f = OpenOptions::new()
@@ -75,7 +75,7 @@ impl Writer {
 
 impl Reader {
     pub fn new(filename: String) -> Reader {
-        let (tx, rx) = mpsc::sync_channel(1024);
+        let (tx, rx) = mpsc::sync_channel(1024*10);
         let builder = thread::Builder::new().name("file_reader".into());
         let _ = builder.spawn(move || {
             let mut f = File::open(filename).unwrap();
