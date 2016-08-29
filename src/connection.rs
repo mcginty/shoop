@@ -16,7 +16,7 @@ pub mod crypto {
     use ring::aead;
     use ring::aead::{SealingKey, OpeningKey, Algorithm};
     use ring::rand::{SystemRandom, SecureRandom};
-    static ALGORITHM: &'static Algorithm = &aead::AES_256_GCM;
+    static ALGORITHM: &'static Algorithm = &aead::AES_128_GCM;
 
     pub struct Handler {
         _working_nonce_buf: [u8; 32],
