@@ -3,6 +3,7 @@ use std::thread;
 use std::path::PathBuf;
 use std::fs::{File, OpenOptions};
 use std::io::{Seek, SeekFrom, Write, Read};
+use std::time::{Duration, Instant};
 
 pub struct Writer {
     thread: thread::JoinHandle<()>,
@@ -89,6 +90,7 @@ impl Reader {
         let _ = builder.spawn(move || {
             let mut f = File::open(filename).unwrap();
             let mut payload = vec![0; 1350];
+            let mut last_buffer_warn = Instant::now();
             f.seek(SeekFrom::Start(0)).unwrap();
             loop {
                 match f.read(&mut payload) {
@@ -101,7 +103,10 @@ impl Reader {
                         owned.extend_from_slice(&payload[..read]);
                         match tx.try_send(ReadMsg::Read(owned)) {
                             Err(mpsc::TrySendError::Full(d)) => {
-                                warn!("file read buffer full.");
+                                if last_buffer_warn.elapsed() > Duration::from_secs(3) {
+                                    warn!("file read buffer full.");
+                                    last_buffer_warn = Instant::now();
+                                }
                                 tx.send(d).unwrap();
                             }
                             Err(_) => {
