@@ -1,9 +1,11 @@
 extern crate ring;
 extern crate udt;
 
+use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
 use std::net::{UdpSocket, SocketAddr, IpAddr};
 use std::str;
 use std::fmt;
+use std::io::Cursor;
 use udt::{UdtSocket, UdtError, UdtOpts, SocketType, SocketFamily};
 
 // TODO config
@@ -184,7 +186,7 @@ pub mod crypto {
     #[cfg(all(feature = "nightly", test))]
     mod bench {
         extern crate test;
-        const DATA_SIZE: usize = 1300;
+        const DATA_SIZE: usize = 16384;
 
         #[bench]
         fn bench_raw_seal(b: &mut test::Bencher) {
@@ -259,16 +261,46 @@ pub mod crypto {
 
 fn new_udt_socket() -> UdtSocket {
     udt::init();
-    let sock = UdtSocket::new(SocketFamily::AFInet, SocketType::Datagram).unwrap();
+    let sock = UdtSocket::new(SocketFamily::AFInet, SocketType::Stream).unwrap();
     sock.setsockopt(UdtOpts::UDP_RCVBUF, UDT_BUF_SIZE).unwrap();
     sock.setsockopt(UdtOpts::UDP_SNDBUF, UDT_BUF_SIZE).unwrap();
     sock
 }
 
+trait ExactIO {
+    fn send_exact(&self, buf: &[u8]) -> Result<(), UdtError>;
+    fn recv_exact(&self, buf: &mut [u8], len: usize) -> Result<(), UdtError>;
+}
+
+impl ExactIO for UdtSocket {
+    fn send_exact(&self, buf: &[u8]) -> Result<(), UdtError> {
+        let mut total: usize = 0;
+        while total < buf.len() {
+            total += try!(self.send(&buf[total..])) as usize;
+        }
+        Ok(())
+    }
+
+    fn recv_exact(&self, buf: &mut [u8], len: usize) -> Result<(), UdtError> {
+        let mut total: usize = 0;
+        while total < len {
+            let remaining = len - total;
+            total += try!(self.recv(&mut buf[total..], remaining)) as usize;
+        }
+        Ok(())
+    }
+}
+
 fn send(sock: &UdtSocket, crypto: &mut crypto::Handler, buf: &mut [u8], len: usize) -> Result<(), UdtError> {
     // FIXME don't unwrap, create an Error struct that can handle everything
     if let Ok(sealed_len) = crypto.seal(buf, len) {
-        sock.sendmsg(&buf[..sealed_len]).map(|_| ())
+        assert!(sealed_len <= u32::max_value() as usize, "single chunk must be 32-bit length");
+
+        let mut wtr = vec![];
+        wtr.write_u32::<LittleEndian>(sealed_len as u32).unwrap();
+        try!(sock.send_exact(&wtr));
+
+        sock.send_exact(&buf[..sealed_len])
     } else {
         Err(UdtError {
             err_code: -1,
@@ -278,8 +310,13 @@ fn send(sock: &UdtSocket, crypto: &mut crypto::Handler, buf: &mut [u8], len: usi
 }
 
 fn recv(sock: &UdtSocket, crypto: &mut crypto::Handler, buf: &mut [u8]) -> Result<usize, UdtError> {
-    let size = try!(sock.recvmsg(buf));
-    crypto.open(&mut buf[..size]).map_err(|_| {
+    let mut len_buf = vec![0u8; 4];
+    try!(sock.recv_exact(&mut len_buf, 4)); // u32
+    let mut rdr = Cursor::new(len_buf);
+    let len = rdr.read_u32::<LittleEndian>().unwrap() as usize;
+
+    try!(sock.recv_exact(buf, len));
+    crypto.open(&mut buf[..len]).map_err(|_| {
         UdtError {
             err_code: -1,
             err_msg: String::from("decryption failure"),
