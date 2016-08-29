@@ -79,7 +79,7 @@ impl Reader {
         let builder = thread::Builder::new().name("file_reader".into());
         let _ = builder.spawn(move || {
             let mut f = File::open(filename).unwrap();
-            let mut payload = vec![0; 1300];
+            let mut payload = vec![0; 1350];
             f.seek(SeekFrom::Start(0)).unwrap();
             loop {
                 match f.read(&mut payload) {
