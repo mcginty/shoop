@@ -376,10 +376,10 @@ impl Server {
     }
 
     fn send_file<T: Transceiver>(&mut self, client: &mut T) -> Result<(), ShoopErr> {
-        let mut buf = Vec::with_capacity(connection::MAX_MESSAGE_SIZE);
+        let mut buf = vec![0u8; connection::MAX_MESSAGE_SIZE];
         let recv_len = match client.recv(&mut buf[..]) {
             Ok(hdr) => hdr,
-            Err(e) => return Err(ShoopErr::new(ShoopErrKind::Severed, &format!("{:?}", e), 0)),
+            Err(e) => return Err(ShoopErr::new(ShoopErrKind::Severed, &format!("0-length msg received. {:?}", e), 0)),
         };
         let mut rdr = Cursor::new(buf);
         let offset = rdr.read_u64::<LittleEndian>().unwrap();
@@ -397,7 +397,7 @@ impl Server {
         match client.send(&mut buf, wtr.len()) {
             Ok(()) => info!("wrote filesize header."),
             Err(e) => {
-                return Err(ShoopErr::new(ShoopErrKind::Severed, &format!("{:?}", e), remaining))
+                return Err(ShoopErr::new(ShoopErrKind::Severed, &format!("failed to write filesize hdr. {:?}", e), remaining))
             }
         }
 
@@ -593,11 +593,12 @@ impl Client {
                     die!("errrrrrrr connecting to {}:{} - {:?}", addr.ip(), addr.port(), e);
                 }
             }
-            let mut buf = Vec::with_capacity(connection::MAX_MESSAGE_SIZE);
+            let mut buf = vec![0u8; connection::MAX_MESSAGE_SIZE];
             let mut wtr = vec![];
             wtr.write_u64::<LittleEndian>(offset).unwrap();
             buf[..wtr.len()].copy_from_slice(&wtr);
-            if let Err(_) = conn.send(&mut buf, wtr.len()) {
+            if let Err(e) = conn.send(&mut buf, wtr.len()) {
+                println!("{:?}", e);
                 conn.close().unwrap();
                 continue;
             }
