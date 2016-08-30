@@ -389,10 +389,11 @@ impl Server {
     }
 
     fn send_remaining<T: Transceiver>(&mut self, client: &mut T, remaining: u64) -> Result<(), Error> {
-        let mut buf = vec![];
-        buf.write_u64::<LittleEndian>(remaining).unwrap();
-        let len = buf.len();
-        client.send(&mut buf, len)
+        let mut buf = vec![0u8; 1024];
+        let mut wtr = vec![];
+        wtr.write_u64::<LittleEndian>(remaining).unwrap();
+        buf.extend_from_slice(&wtr);
+        client.send(&mut buf, wtr.len())
             .map_err(|e| Error::new(ErrorKind::Severed,
                                     &format!("failed to write filesize hdr. {:?}", e), remaining))
     }
