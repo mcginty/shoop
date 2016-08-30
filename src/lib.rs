@@ -30,7 +30,7 @@ use log::{LogRecord, LogLevel, LogMetadata};
 use std::net::{SocketAddr, IpAddr};
 use std::fs::File;
 use std::io;
-use std::io::{Cursor, Error, Seek, SeekFrom, Write};
+use std::io::{Cursor, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::{str, env, thread, fmt};
 use std::str::FromStr;
@@ -126,13 +126,13 @@ impl fmt::Display for ServerErr {
 }
 
 #[allow(dead_code)]
-enum ShoopErrKind {
+enum ErrorKind {
     Severed,
     Fatal,
 }
 
-struct ShoopErr {
-    kind: ShoopErrKind,
+struct Error {
+    kind: ErrorKind,
     msg: Option<String>,
     finished: u64,
 }
@@ -178,9 +178,9 @@ impl ShoopLogger {
     }
 }
 
-impl ShoopErr {
-    pub fn new(kind: ShoopErrKind, msg: &str, finished: u64) -> ShoopErr {
-        ShoopErr {
+impl Error {
+    pub fn new(kind: ErrorKind, msg: &str, finished: u64) -> Error {
+        Error {
             kind: kind,
             msg: Some(String::from(msg)),
             finished: finished,
@@ -188,9 +188,9 @@ impl ShoopErr {
     }
 
     #[allow(dead_code)]
-    pub fn from(err: Error, finished: u64) -> ShoopErr {
-        ShoopErr {
-            kind: ShoopErrKind::Severed,
+    pub fn from(err: io::Error, finished: u64) -> Error {
+        Error {
+            kind: ErrorKind::Severed,
             msg: Some(format!("{:?}", err)),
             finished: finished,
         }
@@ -343,12 +343,12 @@ impl Server {
                             let _ = client.close();
                             break;
                         }
-                        Err(ShoopErr { kind: ShoopErrKind::Severed, msg, finished }) => {
+                        Err(Error { kind: ErrorKind::Severed, msg, finished }) => {
                             info!("connection severed, msg: {:?}, finished: {}", msg, finished);
                             let _ = client.close();
                             continue;
                         }
-                        Err(ShoopErr { kind: ShoopErrKind::Fatal, msg, finished }) => {
+                        Err(Error { kind: ErrorKind::Fatal, msg, finished }) => {
                             die!("connection fatal, msg: {:?}, finished: {}", msg, finished);
                         }
                     }
@@ -361,12 +361,12 @@ impl Server {
                     //         let _ = client.close();
                     //         break;
                     //     }
-                    //     Err(ShoopErr { kind: ShoopErrKind::Severed, msg, finished }) => {
+                    //     Err(Error { kind: ErrorKind::Severed, msg, finished }) => {
                     //         info!("connection severed, msg: {:?}, finished: {}", msg, finished);
                     //         let _ = client.close();
                     //         continue;
                     //     }
-                    //     Err(ShoopErr { kind: ShoopErrKind::Fatal, msg, finished }) => {
+                    //     Err(Error { kind: ErrorKind::Fatal, msg, finished }) => {
                     //         die!("connection fatal, msg: {:?}, finished: {}", msg, finished);
                     //     }
                     // }
@@ -376,32 +376,42 @@ impl Server {
         info!("stopped listening.");
     }
 
-    fn send_file<T: Transceiver>(&mut self, client: &mut T) -> Result<(), ShoopErr> {
-        let mut buf = vec![0u8; connection::MAX_MESSAGE_SIZE];
-        match client.recv(&mut buf[..]) {
-            Ok(i) if i < 8 => return Err(ShoopErr::new(ShoopErrKind::Severed, &format!("msg too short"), 0)),
-            Err(e) => return Err(ShoopErr::new(ShoopErrKind::Severed, &format!("0-length msg received. {:?}", e), 0)),
+    fn recv_offset<T: Transceiver>(&mut self, client: &mut T) -> Result<u64, Error> {
+        let mut buf = vec![0u8; 8];
+        match client.recv(&mut buf) {
+            Ok(i) if i < 8 => return Err(Error::new(ErrorKind::Severed, &format!("msg too short"), 0)),
+            Err(e) => return Err(Error::new(ErrorKind::Severed, &format!("0-length msg received. {:?}", e), 0)),
             _ => {}
         };
         let mut rdr = Cursor::new(buf);
         let offset = rdr.read_u64::<LittleEndian>().unwrap();
-        buf = rdr.into_inner();
+        Ok(offset)
+    }
+
+    fn send_remaining<T: Transceiver>(&mut self, client: &mut T, remaining: u64) -> Result<(), Error> {
+        let mut buf = vec![];
+        buf.write_u64::<LittleEndian>(remaining).unwrap();
+        let len = buf.len();
+        client.send(&mut buf, len)
+            .map_err(|e| Error::new(ErrorKind::Severed,
+                                    &format!("failed to write filesize hdr. {:?}", e), remaining))
+    }
+
+    fn send_file<T: Transceiver>(&mut self, client: &mut T) -> Result<(), Error> {
+        let mut buf = vec![0u8; connection::MAX_MESSAGE_SIZE];
+        let offset = try!(self.recv_offset(client));
+
+        info!("starting at offset {}", offset);
+
         let mut f = File::open(self.filename.clone()).unwrap();
         f.seek(SeekFrom::Start(offset)).unwrap();
         let metadata = f.metadata().unwrap();
 
         let remaining = metadata.len() - offset;
-        info!("total {} bytes", remaining);
 
-        let mut wtr = vec![];
-        wtr.write_u64::<LittleEndian>(remaining).unwrap();
-        buf[..wtr.len()].copy_from_slice(&wtr);
-        match client.send(&mut buf, wtr.len()) {
-            Ok(()) => info!("wrote filesize header."),
-            Err(e) => {
-                return Err(ShoopErr::new(ShoopErrKind::Severed, &format!("failed to write filesize hdr. {:?}", e), remaining))
-            }
-        }
+        info!("{} bytes remaining", remaining);
+        try!(self.send_remaining(client, remaining));
+        info!("sent remaining packet.");
 
         let reader = file::Reader::new(self.filename.clone());
         info!("sending file...");
@@ -413,7 +423,7 @@ impl Server {
                 Ok(ReadMsg::Read(payload)) => {
                     buf[..payload.len()].copy_from_slice(&payload);
                     if let Err(e) = client.send(&mut buf, payload.len()) {
-                        return Err(ShoopErr::new(ShoopErrKind::Severed,
+                        return Err(Error::new(ErrorKind::Severed,
                                                  &format!("{:?}", e),
                                                  remaining));
                     }
@@ -428,7 +438,7 @@ impl Server {
 
         if let Err(e) = client.recv(&mut buf[..]) {
             warn!("finished sending, but failed getting client confirmation");
-            return Err(ShoopErr::new(ShoopErrKind::Severed,
+            return Err(Error::new(ErrorKind::Severed,
                                      &format!("{:?}", e),
                                      remaining))
         }
@@ -632,11 +642,11 @@ impl Client {
                         let _ = conn.close();
                         break;
                     }
-                    Err(ShoopErr { kind: ShoopErrKind::Severed, finished, .. }) => {
+                    Err(Error { kind: ErrorKind::Severed, finished, .. }) => {
                         pb.message(format!("{}", "[[conn severed]] ".yellow().bold()));
                         offset = finished;
                     }
-                    Err(ShoopErr { kind: ShoopErrKind::Fatal, msg, .. }) => {
+                    Err(Error { kind: ErrorKind::Fatal, msg, .. }) => {
                         die!("{:?}", msg);
                     }
                 }
@@ -651,7 +661,7 @@ fn recv_file<T: Transceiver>(conn: &mut T,
                              filename: &Path,
                              offset: u64,
                              pb: &Progress)
-             -> Result<(), ShoopErr> {
+             -> Result<(), Error> {
     let f = file::Writer::new(filename.to_path_buf());
     f.seek(SeekFrom::Start(offset));
     let mut total = offset;
@@ -665,12 +675,12 @@ fn recv_file<T: Transceiver>(conn: &mut T,
             }
             Ok(_) => {
                 f.close();
-                return Err(ShoopErr::new(ShoopErrKind::Severed,
+                return Err(Error::new(ErrorKind::Severed,
                                          "empty msg", total))
             }
             Err(e) => {
                 f.close();
-                return Err(ShoopErr::new(ShoopErrKind::Severed,
+                return Err(Error::new(ErrorKind::Severed,
                                          &format!("{:?}", e), total))
             }
         };
