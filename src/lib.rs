@@ -377,7 +377,7 @@ impl Server {
     }
 
     fn recv_offset<T: Transceiver>(&mut self, client: &mut T) -> Result<u64, Error> {
-        let mut buf = vec![0u8; 8];
+        let mut buf = vec![0u8; 1024];
         match client.recv(&mut buf) {
             Ok(i) if i < 8 => return Err(Error::new(ErrorKind::Severed, &format!("msg too short"), 0)),
             Err(e) => return Err(Error::new(ErrorKind::Severed, &format!("0-length msg received. {:?}", e), 0)),
