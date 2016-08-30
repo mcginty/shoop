@@ -84,14 +84,15 @@ impl Writer {
 }
 
 impl Reader {
-    pub fn new(filename: String) -> Reader {
+    pub fn new(filename: &str, offset: u64) -> Reader {
         let (tx, rx) = mpsc::sync_channel(1024*10);
         let builder = thread::Builder::new().name("file_reader".into());
+        let owned_file = filename.to_owned();
         let _ = builder.spawn(move || {
-            let mut f = File::open(filename).unwrap();
+            let mut f = File::open(owned_file).unwrap();
             let mut payload = vec![0; 4096];
             let mut last_buffer_warn = Instant::now();
-            f.seek(SeekFrom::Start(0)).unwrap();
+            f.seek(SeekFrom::Start(offset)).unwrap();
             loop {
                 match f.read(&mut payload) {
                     Ok(0) => {
@@ -115,9 +116,9 @@ impl Reader {
                             Ok(_) => {}
                         }
                     }
-                    Err(_) => {
+                    Err(e) => {
                         tx.send(ReadMsg::Error).unwrap();
-                        panic!("ruh roh");
+                        panic!("ruh roh: {:?}", e);
                     }
                 }
             }

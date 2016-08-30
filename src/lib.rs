@@ -30,7 +30,7 @@ use log::{LogRecord, LogLevel, LogMetadata};
 use std::net::{SocketAddr, IpAddr};
 use std::fs::File;
 use std::io;
-use std::io::{Cursor, Seek, SeekFrom, Write};
+use std::io::{Cursor, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::{str, env, thread, fmt};
 use std::str::FromStr;
@@ -397,24 +397,25 @@ impl Server {
                                     &format!("failed to write filesize hdr. {:?}", e), remaining))
     }
 
+    fn get_file_size(filename: &str) -> u64 {
+        File::open(filename.to_owned()).unwrap()
+             .metadata().unwrap()
+             .len()
+    }
+
     fn send_file<T: Transceiver>(&mut self, client: &mut T) -> Result<(), Error> {
         let mut buf = vec![0u8; connection::MAX_MESSAGE_SIZE];
-        let offset = try!(self.recv_offset(client));
 
+        let offset = try!(self.recv_offset(client));
         info!("starting at offset {}", offset);
 
-        let mut f = File::open(self.filename.clone()).unwrap();
-        f.seek(SeekFrom::Start(offset)).unwrap();
-        let metadata = f.metadata().unwrap();
-
-        let remaining = metadata.len() - offset;
-
+        let remaining = Server::get_file_size(&self.filename) - offset;
         info!("{} bytes remaining", remaining);
-        try!(self.send_remaining(client, remaining));
-        info!("sent remaining packet.");
 
-        let reader = file::Reader::new(self.filename.clone());
-        info!("sending file...");
+        try!(self.send_remaining(client, remaining));
+        info!("sent remaining packet. sending file...");
+
+        let reader = file::Reader::new(&self.filename, offset);
         loop {
             match reader.rx.recv() {
                 Ok(ReadMsg::Finish) => {
