@@ -47,12 +47,20 @@ const RECONNECT_ACCEPT_TIMEOUT_SECONDS: u64 = 21600;
 
 macro_rules! overprint {
     ($fmt: expr) => {
-        print!(concat!("\x1b[2K\r", $fmt));
-        std::io::stdout().flush().unwrap();
+        if log_enabled!(LogLevel::Debug) {
+            println!($fmt);
+        } else {
+            print!(concat!("\x1b[2K\r", $fmt));
+            std::io::stdout().flush().unwrap();
+        }
     };
     ($fmt:expr, $($arg:tt)*) => {
-        print!(concat!("\x1b[2K\r", $fmt) , $($arg)*);
-        std::io::stdout().flush().unwrap();
+        if log_enabled!(LogLevel::Debug) {
+            println!($fmt, $($arg)*);
+        } else {
+            print!(concat!("\x1b[2K\r", $fmt), $($arg)*);
+            std::io::stdout().flush().unwrap();
+        }
     };
 }
 
@@ -112,7 +120,7 @@ impl LogVerbosity {
             LogVerbosity::Normal => {
                 match mode {
                     ShoopMode::Server => LogLevel::Info,
-                    ShoopMode::Client => LogLevel::Warn,
+                    ShoopMode::Client => LogLevel::Error,
                 }
             }
         }
@@ -419,7 +427,7 @@ impl Server {
         let mut buf = vec![0u8; 1024];
         let mut wtr = vec![];
         wtr.write_u64::<LittleEndian>(remaining).unwrap();
-        buf.extend_from_slice(&wtr);
+        buf[..wtr.len()].copy_from_slice(&wtr);
         client.send(&mut buf, wtr.len())
             .map_err(|e| Error::new(ErrorKind::Severed,
                                     &format!("failed to write filesize hdr. {:?}", e), remaining))
@@ -553,6 +561,9 @@ impl Client {
             std::process::exit(1);
         });
 
+        debug!("server response: version {}, addr {}",
+               response.version, response.addr);
+
         let start_ts = Instant::now();
         let pb = Progress::new();
         match self.transfer_state.clone() {
@@ -637,6 +648,7 @@ impl Client {
             let mut wtr = vec![];
             wtr.write_u64::<LittleEndian>(offset).unwrap();
             buf[..wtr.len()].copy_from_slice(&wtr);
+            debug!("sending offset {}", offset);
             if let Err(e) = conn.send(&mut buf, wtr.len()) {
                 println!("{:?}", e);
                 conn.close().unwrap();
@@ -647,8 +659,13 @@ impl Client {
                 if len == 0 {
                     die!("failed to get filesize from server, probable timeout.");
                 }
+                debug!("got {}-byte \"remaining\" response from server", len);
                 let mut rdr = Cursor::new(buf);
-                filesize = filesize.or_else(|| Some(rdr.read_u64::<LittleEndian>().unwrap()));
+                filesize = filesize.or_else(|| {
+                    let size = rdr.read_u64::<LittleEndian>().unwrap();
+                    debug!("setting total filesize to {}", size);
+                    Some(size)
+                });
                 buf = rdr.into_inner();
                 pb.size(filesize.unwrap());
                 pb.add(offset);
@@ -693,9 +710,8 @@ fn recv_file<T: Transceiver>(conn: &mut T,
              -> Result<(), Error> {
     let f = file::Writer::new(filename.to_path_buf());
     f.seek(SeekFrom::Start(offset));
+    debug!("seeking to {} in {}", offset, filename.display());
     let mut total = offset;
-    let mut packet_count = 0u64;
-    let mut elapsed_bytes = 0u64;
     let buf = &mut [0u8; connection::MAX_MESSAGE_SIZE];
     loop {
         let len = match conn.recv(buf) {
@@ -704,31 +720,29 @@ fn recv_file<T: Transceiver>(conn: &mut T,
             }
             Ok(_) => {
                 f.close();
+                warn!("empty msg, severing");
                 return Err(Error::new(ErrorKind::Severed,
                                          "empty msg", total))
             }
             Err(e) => {
                 f.close();
+                warn!("udt err, severing");
                 return Err(Error::new(ErrorKind::Severed,
                                          &format!("{:?}", e), total))
             }
         };
 
         total += len as u64;
-        elapsed_bytes += len as u64;
-        if packet_count % 8 == 0 {
-            pb.add(elapsed_bytes);
-            elapsed_bytes = 0;
-        }
-        packet_count += 1;
+        pb.add(len as u64);
         f.write_all(buf[..len].to_owned());
 
         if total >= filesize {
-            pb.add(elapsed_bytes);
+            debug!("total >= filesize, breaking recv loop");
             break;
         }
     }
     f.close();
+    debug!("file writing thread joined and closed");
     Ok(())
 }
 
