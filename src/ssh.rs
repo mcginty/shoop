@@ -81,12 +81,10 @@ impl Connection {
     }
 
     fn verify_command_exists(command: &str) -> Result<(), Error> {
-        match Command::new("which").arg(command).output() {
-            Ok(output) => {
-                if output.status.success() {
-                    return Ok(());
-                }
-            }, _ => {},
+        if let Ok(output) = Command::new("which").arg(command).output() {
+            if output.status.success() {
+                return Ok(());
+            }
         }
         Err(Error::new(ErrorType::SshMissing, "`ssh` is required!"))
     }
