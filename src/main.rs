@@ -22,13 +22,13 @@ fn main() {
         .author(crate_authors!())
         .about("Shoop is a ultrafast, (hopefully) secure file transfer tool, that is (hopefully) ideal for transferring large files.")
         .args_from_usage(
-            "-p --port-range=[RANGE] 'server UDP port range in \"<START>-<END>\" format'
+            "-p --port-range=[RANGE] 'server UDP port range (ex. \"55000-55050\")'
              -f --force              'overwrite the output file if it exists'
              -d --debug              'output verbose debug information'
              -s --server             'server mode'
              -r --receive            'receive mode (server mode only)'
-             <SOURCE>                'input \"host:path\", just like scp'
-             [DEST]                  'optional output path (either directory or file)'")
+             <SOURCE>                'input \"host:path\", just like scp (ex. \"myseedbox.com:~/downloads/linux.iso\")'
+             [DEST]                  'optional output path (directory or file, ex. \".\" or \"~/isos\" or \"~/isos/totallynotporn.iso\")'")
         // .subcommand(SubCommand::with_name("server")
         //             .about("Shoop server mode.")
         //             .args_from_usage(
