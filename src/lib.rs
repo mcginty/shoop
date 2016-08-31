@@ -5,7 +5,6 @@ extern crate log;
 extern crate lazy_static;
 extern crate libc;
 extern crate pbr;
-extern crate getopts;
 extern crate unix_daemonize;
 extern crate byteorder;
 extern crate udt;

@@ -3,118 +3,79 @@
 
 #[macro_use]
 extern crate log;
-extern crate getopts;
 #[macro_use]
 extern crate shoop;
+#[macro_use]
+extern crate clap;
 
+use clap::App;
 use std::str;
-use std::env;
-use getopts::Options;
-use shoop::{ShoopLogger, ShoopMode, LogVerbosity, TransferMode, Target, Server, Client};
+use shoop::{ShoopLogger, ShoopMode, LogVerbosity, TransferMode,
+            Target, Server, Client};
 use shoop::connection::PortRange;
 
-const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 const DEFAULT_PORT_RANGE: &'static str = "55000-55050";
 
-fn print_usage(program: &str, opts: Options) {
-    let brief = format!("Shoop is a ultrafast, (hopefully) secure file transfer tool, that is
-(hopefully) ideal for transferring large files.
-
-Usage: {0} [options] SOURCE DEST
-...where HOST is an SSH host
-...where PATH is the path on the *remote* machine of the file you want
-...where DEST is either an existing folder or a location for the new
-                 file (\".\" by default)
-
-Example: {0} seedbox.facebook.com:/home/zuck/internalized_sadness.zip .",
-                        program);
-    print!("{}", opts.usage(&brief));
-}
-
 fn main() {
-    let args: Vec<String> = env::args().collect();
-    let program = args[0].clone();
-    let mut opts = Options::new();
-    // TODO
-    // opts.optopt("o", "output", "set output file name", "NAME");
-    // opts.optopt("a", "ssh-args", "arguments to pass to ssh directly (at your own risk)", ARGS);
-    opts.optopt("p",
-                "port-range",
-                "server listening port range",
-                DEFAULT_PORT_RANGE);
-    opts.optflag("f", "force", "force overwrite (client only)");
-    opts.optflag("r", "receive", "receive mode (server mode only)");
-    opts.optflag("s", "server", "server mode (advanced usage only)");
-    opts.optflag("h", "help", "print this help menu");
-    opts.optflag("d", "debug", "debug output");
-    opts.optflag("v", "version", "print the version");
+    let matches = App::new("shoop")
+        .version(crate_version!())
+        .author(crate_authors!())
+        .about("Shoop is a ultrafast, (hopefully) secure file transfer tool, that is (hopefully) ideal for transferring large files.")
+        .args_from_usage(
+            "-p --port-range=[RANGE] 'server UDP port range in \"<START>-<END>\" format'
+             -f --force              'overwrite the output file if it exists'
+             -d --debug              'output verbose debug information'
+             -s --server             'server mode'
+             -r --receive            'receive mode (server mode only)'
+             <SOURCE>                'input \"host:path\", just like scp'
+             [DEST]                  'optional output path (either directory or file)'")
+        // .subcommand(SubCommand::with_name("server")
+        //             .about("Shoop server mode.")
+        //             .args_from_usage(
+        //                 "-r --receive 'receive mode (client -> server)'"))
+        .get_matches();
 
-    let matches = match opts.parse(&args[1..]) {
-        Ok(m) => m,
-        Err(f) => panic!(f.to_string()),
+    let raw_source = matches.value_of("SOURCE").unwrap();
+
+    let mode = match matches.is_present("server") {
+        true => ShoopMode::Server,
+        _    => ShoopMode::Client,
     };
 
-    if matches.opt_present("h") {
-        print_usage(&program, opts);
-        return;
-    }
-
-    if matches.opt_present("v") {
-        println!("shoop {}", VERSION);
-        return;
-    }
-
-    let raw_source = if !matches.free.is_empty() {
-        matches.free[0].clone()
-    } else {
-        print_usage(&program, opts);
-        return;
-    };
-
-    let mode = if matches.opt_present("s") {
-        ShoopMode::Server
-    } else {
-        ShoopMode::Client
-    };
-
-    let verbosity = if matches.opt_present("d") {
-        LogVerbosity::Debug
-    } else {
-        LogVerbosity::Normal
+    let verbosity = match matches.is_present("debug") {
+        true => LogVerbosity::Debug,
+        _    => LogVerbosity::Normal,
     };
 
     let port_range = {
-        let range_opt = &matches.opt_str("p").unwrap_or_else(|| String::from(DEFAULT_PORT_RANGE));
-        PortRange::from(range_opt).unwrap()
+        let range = matches.value_of("port-range")
+            .unwrap_or_else(|| DEFAULT_PORT_RANGE.into());
+        PortRange::from(range).unwrap()
     };
 
     ShoopLogger::init(mode, verbosity).expect("Error starting shoop logger.");
 
     match mode {
         ShoopMode::Server => {
-            let transfer_mode = if matches.opt_present("r") {
-                TransferMode::Receive
-            } else {
-                TransferMode::Send
+            let transfer_mode = match matches.is_present("receive") {
+                true => TransferMode::Receive,
+                _    => TransferMode::Send,
             };
 
             if let Ok(mut server) = Server::new(port_range, &raw_source) {
                 server.start(transfer_mode);
                 info!("exiting.");
             }
-        }
+        },
         ShoopMode::Client => {
-            let raw_dest = if matches.free.len() > 1 {
-                matches.free[1].clone()
-            } else {
-                String::from(".")
-            };
+            let raw_dest = matches.value_of("DEST")
+                .unwrap_or_else(|| ".".into());
 
-            let source = Target::from(raw_source.clone());
-            let dest = Target::from(raw_dest.clone());
+            let source = Target::from(raw_source.to_owned());
+            let dest = Target::from(raw_dest.to_owned());
 
             match Client::new(source, dest, port_range) {
-                Ok(mut client) => client.start(matches.opt_present("f")),
+                Ok(mut client) => client.start(matches.is_present("force")),
                 Err(e) => error!("{}", e),
             }
         }

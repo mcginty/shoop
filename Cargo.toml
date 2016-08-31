@@ -31,7 +31,7 @@ rustc_version = "^0.1"
 
 [dependencies]
 log = "^0.3"
-getopts = "0.2.14"
+clap = "^2.11"
 unix-daemonize = "0.1"
 byteorder = "^0.5"
 rustc-serialize = "^0.3"
