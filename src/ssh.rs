@@ -64,6 +64,7 @@ impl Connection {
         let cmd = format!("shoop -s '{}' -p {}",
                           self.path.to_string_lossy(),
                           self.port_range);
+        debug!("👉  ssh {}", cmd);
         let output = try!(Command::new("ssh")
             .arg(&self.hostname)
             .arg(cmd)

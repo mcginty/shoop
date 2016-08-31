@@ -48,7 +48,7 @@ const RECONNECT_ACCEPT_TIMEOUT_SECONDS: u64 = 21600;
 macro_rules! overprint {
     ($fmt: expr) => {
         if log_enabled!(LogLevel::Debug) {
-            println!($fmt);
+            // println!($fmt);
         } else {
             print!(concat!("\x1b[2K\r", $fmt));
             std::io::stdout().flush().unwrap();
@@ -56,7 +56,7 @@ macro_rules! overprint {
     };
     ($fmt:expr, $($arg:tt)*) => {
         if log_enabled!(LogLevel::Debug) {
-            println!($fmt, $($arg)*);
+            // println!($fmt, $($arg)*);
         } else {
             print!(concat!("\x1b[2K\r", $fmt), $($arg)*);
             std::io::stdout().flush().unwrap();
@@ -561,7 +561,7 @@ impl Client {
             std::process::exit(1);
         });
 
-        debug!("server response: version {}, addr {}",
+        debug!("👈  init(version: {}, addr: {})",
                response.version, response.addr);
 
         let start_ts = Instant::now();
@@ -648,7 +648,7 @@ impl Client {
             let mut wtr = vec![];
             wtr.write_u64::<LittleEndian>(offset).unwrap();
             buf[..wtr.len()].copy_from_slice(&wtr);
-            debug!("sending offset {}", offset);
+            debug!("👉  offset({})", offset);
             if let Err(e) = conn.send(&mut buf, wtr.len()) {
                 println!("{:?}", e);
                 conn.close().unwrap();
@@ -656,16 +656,21 @@ impl Client {
             }
 
             if let Ok(len) = conn.recv(&mut buf[..]) {
-                if len == 0 {
-                    die!("failed to get filesize from server, probable timeout.");
+                if len != 8 {
+                    error!("failed to get filesize from server, probable timeout.");
+                    std::process::exit(1);
                 }
-                debug!("got {}-byte \"remaining\" response from server", len);
                 let mut rdr = Cursor::new(buf);
+                let remaining = rdr.read_u64::<LittleEndian>().unwrap();
+                debug!("👈  remaining({})", remaining);
                 filesize = filesize.or_else(|| {
-                    let size = rdr.read_u64::<LittleEndian>().unwrap();
-                    debug!("setting total filesize to {}", size);
-                    Some(size)
+                    debug!("✍️  set total filesize to {}", remaining);
+                    Some(remaining)
                 });
+                if filesize.unwrap() - remaining != offset {
+                    error!("it seems the server filesize has changed. dying.");
+                    std::process::exit(1);
+                }
                 buf = rdr.into_inner();
                 pb.size(filesize.unwrap());
                 pb.add(offset);
@@ -677,6 +682,7 @@ impl Client {
                                 offset,
                                 &pb) {
                     Ok(_) => {
+                        debug!("👉  finish packet");
                         pb.message(format!("{} (done, sending confirmation)  ",
                                    dest_path.file_name().unwrap().to_string_lossy().green()));
                         buf[0] = 0;
@@ -710,7 +716,7 @@ fn recv_file<T: Transceiver>(conn: &mut T,
              -> Result<(), Error> {
     let f = file::Writer::new(filename.to_path_buf());
     f.seek(SeekFrom::Start(offset));
-    debug!("seeking to {} in {}", offset, filename.display());
+    debug!("✍️  seeking to pos {} in {}", offset, filename.display());
     let mut total = offset;
     let buf = &mut [0u8; connection::MAX_MESSAGE_SIZE];
     loop {
@@ -720,13 +726,13 @@ fn recv_file<T: Transceiver>(conn: &mut T,
             }
             Ok(_) => {
                 f.close();
-                warn!("empty msg, severing");
+                warn!("\nempty msg, severing\n");
                 return Err(Error::new(ErrorKind::Severed,
                                          "empty msg", total))
             }
             Err(e) => {
                 f.close();
-                warn!("udt err, severing");
+                warn!("\nudt err, severing\n");
                 return Err(Error::new(ErrorKind::Severed,
                                          &format!("{:?}", e), total))
             }
@@ -737,7 +743,6 @@ fn recv_file<T: Transceiver>(conn: &mut T,
         f.write_all(buf[..len].to_owned());
 
         if total >= filesize {
-            debug!("total >= filesize, breaking recv loop");
             break;
         }
     }
