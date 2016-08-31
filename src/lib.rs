@@ -278,6 +278,23 @@ impl Target {
     }
 }
 
+impl fmt::Display for TransferState {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let target = self.clone();
+        let pretty = match target {
+            TransferState::Send(l, (rh, rp)) => {
+                format!("Local({}) -> Remote({}:{})",
+                l.display(), rh, rp.display())
+            }
+            TransferState::Receive((rh, rp), l) => {
+                format!("Remote({}:{}) -> Local({})",
+                rh, rp.display(), l.display())
+            }
+        };
+        write!(f, "{}", pretty)
+    }
+}
+
 impl Server {
     fn daemonize() {
         let stdout = Some(Path::new(&env::var("HOME").unwrap()).join(".shoop.log"));
@@ -538,6 +555,8 @@ impl Client {
             panic!("something in the assertions are wrong.");
         };
 
+        debug!("✍️  {}", state);
+
         Ok(Client {
             port_range: port_range,
             transfer_state: state
@@ -639,6 +658,7 @@ impl Client {
             match conn.connect() {
                 Ok(()) => {
                     overprint!(" - connection opened, shakin' hands, makin' frands");
+                    info!("👍  UDT connection established")
                 }
                 Err(e) => {
                     die!("errrrrrrr connecting to {}:{} - {:?}", addr.ip(), addr.port(), e);
@@ -650,7 +670,7 @@ impl Client {
             buf[..wtr.len()].copy_from_slice(&wtr);
             debug!("👉  offset({})", offset);
             if let Err(e) = conn.send(&mut buf, wtr.len()) {
-                println!("{:?}", e);
+                error!("{:?}", e);
                 conn.close().unwrap();
                 continue;
             }
