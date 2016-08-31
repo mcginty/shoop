@@ -10,7 +10,7 @@ extern crate shoop;
 use std::str;
 use std::env;
 use getopts::Options;
-use shoop::{ShoopLogger, ShoopMode, TransferMode, Target, Server, Client};
+use shoop::{ShoopLogger, ShoopMode, LogVerbosity, TransferMode, Target, Server, Client};
 use shoop::connection::PortRange;
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
@@ -46,6 +46,7 @@ fn main() {
     opts.optflag("r", "receive", "receive mode (server mode only)");
     opts.optflag("s", "server", "server mode (advanced usage only)");
     opts.optflag("h", "help", "print this help menu");
+    opts.optflag("d", "debug", "debug output");
     opts.optflag("v", "version", "print the version");
 
     let matches = match opts.parse(&args[1..]) {
@@ -76,12 +77,18 @@ fn main() {
         ShoopMode::Client
     };
 
+    let verbosity = if matches.opt_present("d") {
+        LogVerbosity::Debug
+    } else {
+        LogVerbosity::Normal
+    };
+
     let port_range = {
         let range_opt = &matches.opt_str("p").unwrap_or_else(|| String::from(DEFAULT_PORT_RANGE));
         PortRange::from(range_opt).unwrap()
     };
 
-    ShoopLogger::init(mode).expect("Error starting shoop logger.");
+    ShoopLogger::init(mode, verbosity).expect("Error starting shoop logger.");
 
     match mode {
         ShoopMode::Server => {

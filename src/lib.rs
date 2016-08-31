@@ -100,6 +100,26 @@ pub enum ShoopMode {
 }
 
 #[derive(Clone, Copy)]
+pub enum LogVerbosity {
+    Normal,
+    Debug,
+}
+
+impl LogVerbosity {
+    fn to_log_level(self, mode: ShoopMode) -> LogLevel {
+        match self {
+            LogVerbosity::Debug => LogLevel::Debug,
+            LogVerbosity::Normal => {
+                match mode {
+                    ShoopMode::Server => LogLevel::Info,
+                    ShoopMode::Client => LogLevel::Warn,
+                }
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
 pub enum TransferMode {
     Send,
     Receive,
@@ -140,11 +160,12 @@ struct Error {
 pub struct ShoopLogger {
     pid: i32,
     mode: ShoopMode,
+    log_level: LogLevel,
 }
 
 impl log::Log for ShoopLogger {
     fn enabled(&self, metadata: &LogMetadata) -> bool {
-        metadata.level() <= LogLevel::Info
+        metadata.level() <= self.log_level
     }
 
     fn log(&self, record: &LogRecord) {
@@ -170,10 +191,16 @@ impl log::Log for ShoopLogger {
 }
 
 impl ShoopLogger {
-    pub fn init(mode: ShoopMode) -> Result<(), log::SetLoggerError> {
+    pub fn init(mode: ShoopMode, verbosity: LogVerbosity) -> Result<(), log::SetLoggerError> {
+        let log_level = verbosity.to_log_level(mode);
+
         log::set_logger(|max_log_level| {
-            max_log_level.set(log::LogLevelFilter::Info);
-            Box::new(ShoopLogger{ pid: unsafe { libc::getpid() }, mode: mode })
+            max_log_level.set(log_level.to_log_level_filter());
+            Box::new(ShoopLogger {
+                pid: unsafe { libc::getpid() },
+                mode: mode,
+                log_level: log_level,
+            })
         })
     }
 }
