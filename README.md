@@ -18,22 +18,23 @@ From Vietnam, for example, it typically speeds up my downloads by about 2x, if n
 # install
 The server-side and client-side use the same binary (at least for now). Follow these instructions for both sides (at the moment, I'm not distributing binaries until this is more stable). If you're familiar with `mosh`, it's a very similar setup.
 
-## macos
-1. install rust (I recommend [rustup](https://www.rustup.rs/))
+## macOS
+1. get Command Line Tools for Xcode: `xcode-select --install`, https://developer.apple.com/downloads or [Xcode](https://itunes.apple.com/us/app/xcode/id497799835)
+2. get rust (easily via rustup `curl https://sh.rustup.rs -sSf | sh`)
 3. `cargo install shoop`
 
-## debian (and, basically, any other linux)
-1. install build dependencies `sudo apt install build-essentials pkg-config`
-3. install rust via rustup `curl https://sh.rustup.rs -sSf | sh`
-4. source cargo env variables `source $HOME/.cargo/env`
-5. build and install shoop `source $HOME/.cargo/env`
+## debian (if you're on another linux, you know the difference)
+1. get build-essentials `sudo apt install build-essentials`
+2. get rust (easily via rustup `curl https://sh.rustup.rs -sSf | sh`)
+3. `cargo install shoop`
 
-**Important note**: on server side you should copy (or symlink) shoop binary to the system binary directories (e.g. /usr/bin). For some cases, it not launching from `$HOME/.cargo/bin`.
+## windows
+1. `yes sorry`
 
 ### server
 If you have a firewall, the default port range shoop uses is 55000-55050 (if you want 50 simultaneous connections). In Ubuntu this might look like:
 ```
-sudo ufw allow 55000:55010/udp
+sudo ufw allow 55000:55050/udp
 ```
 
 # your typical performance example
