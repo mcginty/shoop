@@ -746,13 +746,13 @@ fn recv_file<T: Transceiver>(conn: &mut T,
             }
             Ok(_) => {
                 f.close();
-                warn!("\nempty msg, severing\n");
+                warn!("\n\nempty msg, severing\n");
                 return Err(Error::new(ErrorKind::Severed,
                                          "empty msg", total))
             }
             Err(e) => {
                 f.close();
-                warn!("\nudt err, severing\n");
+                warn!("\n\nUDT err, severing");
                 return Err(Error::new(ErrorKind::Severed,
                                          &format!("{:?}", e), total))
             }
