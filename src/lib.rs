@@ -3,10 +3,13 @@
 extern crate log;
 #[macro_use]
 extern crate lazy_static;
+extern crate core;
 extern crate libc;
 extern crate pbr;
 extern crate unix_daemonize;
 extern crate byteorder;
+extern crate num_bigint;
+extern crate num_traits;
 extern crate udt;
 extern crate ring;
 extern crate time;
@@ -376,19 +379,21 @@ impl Server {
                     std::process::exit(1);
                 }
             });
+
             info!("waiting for connection...");
-            let mut client = match self.conn.accept() {
+            let mut client = &mut match self.conn.accept() {
                 Ok(client) => client,
                 Err(e) => {
                     die!("unexpected error on sock accept() {:?}", e);
                 }
             };
+
             connection_count += 1;
             tx.send(()).unwrap();
             info!("accepted connection with {:?}!", client.getpeer());
             match mode {
                 TransferMode::Send => {
-                    match self.send_file(&mut client) {
+                    match self.send_file(client) {
                         Ok(_) => {
                             info!("done sending file");
                             let _ = client.close();
