@@ -771,7 +771,8 @@ fn recv_file<T: Transceiver>(conn: &mut T,
         }
     }
     f.close();
-    debug!("file writing thread joined and closed");
+    debug!("");
+    debug!("👾  file writing thread joined and closed");
     Ok(())
 }
 

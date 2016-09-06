@@ -78,9 +78,9 @@ pub fn gen_key() -> Vec<u8> {
 
 impl Handler {
     pub fn new(key: &[u8]) -> Handler {
-        debug!("AEAD key len: {}", ALGORITHM.key_len());
-        debug!("AEAD nonce len: {}", ALGORITHM.nonce_len());
-        debug!("AEAD max overhead len: {}", ALGORITHM.max_overhead_len());
+        debug!("👾  AEAD key len: {}", ALGORITHM.key_len());
+        debug!("👾  AEAD nonce len: {}", ALGORITHM.nonce_len());
+        debug!("👾  AEAD max overhead len: {}", ALGORITHM.max_overhead_len());
         Handler {
             _working_seal_buf: vec![0u8; super::MAX_MESSAGE_SIZE],
             _working_nonce_buf: [0u8; 32],
