@@ -166,8 +166,8 @@ mod test {
     #[test]
     fn raw_roundtrip() {
         use ring::aead;
-        use ring::aead::{SealingKey, OpeningKey, Algorithm};
-        use ring::rand::{SystemRandom, SecureRandom};
+        use ring::aead::{SealingKey, OpeningKey};
+        use ring::rand::SystemRandom;
 
         let rng = SystemRandom::new();
         let mut key_bytes = vec![0u8; super::ALGORITHM.key_len()];
@@ -226,6 +226,35 @@ mod test {
             assert!(set.insert(key));
         }
     }
+
+    #[test]
+    fn arc_encryption_uniqueness() {
+        use core::ops::DerefMut;
+        use std::sync::{Arc, Mutex};
+
+        let key = super::gen_key();
+        let handler = Arc::new(Mutex::new(super::Handler::new(&key)));
+        let handler2 = handler.clone();
+
+        let mut data = vec![0u8; super::super::MAX_MESSAGE_SIZE];
+
+        let first = {
+            let mutex = &handler;
+            let mut crypto = mutex.lock().unwrap();
+            let cipher_len = crypto.deref_mut().seal(&mut data, 4096).unwrap();
+            data[..cipher_len].to_owned()
+        };
+        let second = {
+            let mutex = &handler2;
+            let mut crypto = mutex.lock().unwrap();
+            let cipher_len = crypto.deref_mut().seal(&mut data, 4096).unwrap();
+            data[..cipher_len].to_owned()
+        };
+
+        println!("{:?}", &first);
+        println!("{:?}", &second);
+        assert!(first != second);
+    }
 }
 
 #[cfg(all(feature = "nightly", test))]
@@ -245,8 +274,8 @@ mod bench {
     #[bench]
     fn bench_raw_seal(b: &mut test::Bencher) {
         use ring::aead;
-        use ring::aead::{SealingKey, OpeningKey, Algorithm};
-        use ring::rand::{SystemRandom, SecureRandom};
+        use ring::aead::SealingKey;
+        use ring::rand::SystemRandom;
 
         let rng = SystemRandom::new();
         let mut key_bytes = vec![0u8; super::ALGORITHM.key_len()];
@@ -269,8 +298,8 @@ mod bench {
     #[bench]
     fn bench_raw_open(b: &mut test::Bencher) {
         use ring::aead;
-        use ring::aead::{SealingKey, OpeningKey, Algorithm};
-        use ring::rand::{SystemRandom, SecureRandom};
+        use ring::aead::{SealingKey, OpeningKey};
+        use ring::rand::SystemRandom;
 
         let rng = SystemRandom::new();
         let mut key_bytes = vec![0u8; super::ALGORITHM.key_len()];
@@ -289,7 +318,7 @@ mod bench {
         let sealed_len = aead::seal_in_place(&key, &nonce_bytes, &mut in_out,
                                              out_suffix_capacity, &[]).unwrap();
         b.iter(|| aead::open_in_place(&opening_key, &nonce_bytes,
-                                           0, &mut in_out, &[]))
+                                           0, &mut in_out[..sealed_len], &[]))
     }
 
     #[bench]

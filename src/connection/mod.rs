@@ -143,14 +143,14 @@ impl Transceiver for Client {
 impl Transceiver for ServerConnection {
     fn send(&mut self, buf: &mut [u8], len: usize) -> Result<(), UdtError> {
         let mutex = &self.crypto;
-        let mut counter = mutex.lock().unwrap();
-        send(&self.sock, counter.deref_mut(), buf, len)
+        let mut crypto = mutex.lock().unwrap();
+        send(&self.sock, crypto.deref_mut(), buf, len)
     }
 
     fn recv(&mut self, buf: &mut [u8]) -> Result<usize, UdtError> {
         let mutex = &self.crypto;
-        let mut counter = mutex.lock().unwrap();
-        recv(&self.sock, counter.deref_mut(), buf)
+        let mut crypto = mutex.lock().unwrap();
+        recv(&self.sock, crypto.deref_mut(), buf)
     }
 
     fn close(&self) -> Result<(), UdtError> {

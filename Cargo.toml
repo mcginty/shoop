@@ -48,6 +48,6 @@ pbr = "^0.3"
 [dev-dependencies]
 rand = "0.3"
 
-# [profile.release]
-# lto = true
-# panic = 'abort'
+[profile.release]
+lto = true
+panic = 'abort'
