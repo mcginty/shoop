@@ -80,7 +80,7 @@ impl Handler {
     pub fn new(key: &[u8]) -> Handler {
         debug!("👾  AEAD key len: {}", ALGORITHM.key_len());
         debug!("👾  AEAD nonce len: {}", ALGORITHM.nonce_len());
-        debug!("👾  AEAD max overhead len: {}", ALGORITHM.max_overhead_len());
+        debug!("👾  AEAD max overhead len: {}", ALGORITHM.tag_len());
         Handler {
             _working_seal_buf: vec![0u8; super::MAX_MESSAGE_SIZE],
             _working_nonce_buf: [0u8; 32],
@@ -91,7 +91,7 @@ impl Handler {
 
     pub fn seal(&mut self, buf: &mut [u8], len: usize) -> Result<usize, ()> {
         let nonce_len = ALGORITHM.nonce_len();
-        let max_suffix_len = ALGORITHM.max_overhead_len();
+        let max_suffix_len = ALGORITHM.tag_len();
 
         assert!(nonce_len < u8::max_value() as usize,
                 "Uh, why is the nonce size this big?");
@@ -107,9 +107,9 @@ impl Handler {
         sealed[0..len].copy_from_slice(&buf[..len]);
         match aead::seal_in_place(&self.key.sealing,
                                   &nonce,
+                                  &[],
                                   &mut sealed,
-                                  max_suffix_len,
-                                  &[]) {
+                                  max_suffix_len) {
             Ok(seal_len) => {
                 buf[..nonce_len].copy_from_slice(&nonce[..]);
                 buf[nonce_len..nonce_len+seal_len].copy_from_slice(&sealed[..seal_len]);
@@ -133,7 +133,8 @@ impl Handler {
         let nonce = &mut self._working_nonce_buf[..nonce_len];
         nonce.copy_from_slice(&buf[..nonce_len]);
 
-        aead::open_in_place(&self.key.opening, &nonce, nonce_len, buf, &[])
+        aead::open_in_place(&self.key.opening, &nonce, &[], nonce_len, buf)
+            .map(|buf| buf.len())
             .map_err(|_| String::from("decrypt failed"))
     }
 }
@@ -177,18 +178,17 @@ mod test {
         let key = SealingKey::new(super::ALGORITHM, &key_bytes).unwrap();
 
         let data = [1u8; 1350];
-        let out_suffix_capacity = super::ALGORITHM.max_overhead_len();
+        let out_suffix_capacity = super::ALGORITHM.tag_len();
         let mut in_out = vec![1u8; data.len() + out_suffix_capacity];
-        aead::seal_in_place(&key, &nonce_bytes,
-                            &mut in_out, out_suffix_capacity,
-                            &[]).unwrap();
+        aead::seal_in_place(&key, &nonce_bytes, &[],
+                            &mut in_out, out_suffix_capacity).unwrap();
 
         let opening_key = OpeningKey::new(super::ALGORITHM, &key_bytes).unwrap();
-        let len = aead::open_in_place(&opening_key, &nonce_bytes,
-                                      0, &mut in_out, &[]).unwrap();
+        let buf = aead::open_in_place(&opening_key, &nonce_bytes, &[],
+                                      0, &mut in_out).unwrap();
 
-        assert_eq!(len, 1350);
-        assert_eq!(&in_out[..len], &data[..]);
+        assert_eq!(buf.len(), 1350);
+        assert_eq!(buf, &data[..]);
     }
 
     #[test]
@@ -284,14 +284,14 @@ mod bench {
         let key = SealingKey::new(super::ALGORITHM, &key_bytes).unwrap();
 
         let data = [1u8; DATA_SIZE];
-        let out_suffix_capacity = super::ALGORITHM.max_overhead_len();
+        let out_suffix_capacity = super::ALGORITHM.tag_len();
         let mut in_out = vec![1u8; data.len() + out_suffix_capacity];
 
         b.bytes = DATA_SIZE as u64;
         b.iter(|| {
             rng.fill(&mut nonce_bytes).unwrap();
-            aead::seal_in_place(&key, &nonce_bytes, &mut in_out,
-                                out_suffix_capacity, &[]).unwrap()
+            aead::seal_in_place(&key, &nonce_bytes, &[], &mut in_out,
+                                out_suffix_capacity).unwrap()
         })
     }
 
@@ -310,15 +310,15 @@ mod bench {
         let opening_key = OpeningKey::new(super::ALGORITHM, &key_bytes).unwrap();
 
         let data = [1u8; DATA_SIZE];
-        let out_suffix_capacity = super::ALGORITHM.max_overhead_len();
+        let out_suffix_capacity = super::ALGORITHM.tag_len();
         let mut in_out = vec![1u8; data.len() + out_suffix_capacity];
 
         b.bytes = DATA_SIZE as u64;
 
-        let sealed_len = aead::seal_in_place(&key, &nonce_bytes, &mut in_out,
-                                             out_suffix_capacity, &[]).unwrap();
-        b.iter(|| aead::open_in_place(&opening_key, &nonce_bytes,
-                                           0, &mut in_out[..sealed_len], &[]))
+        let sealed_len = aead::seal_in_place(&key, &nonce_bytes, &[], &mut in_out,
+                                             out_suffix_capacity).unwrap();
+        b.iter(|| { aead::open_in_place(&opening_key, &nonce_bytes, &[],
+                                        0, &mut in_out[..sealed_len]).unwrap(); });
     }
 
     #[bench]
