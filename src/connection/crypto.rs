@@ -6,7 +6,7 @@ use num_traits::{Zero, One};
 use num_bigint::BigUint;
 use ring::aead;
 use ring::aead::{SealingKey, OpeningKey, Algorithm};
-use ring::rand::SystemRandom;
+use ring::rand::{SecureRandom, SystemRandom};
 static AES_GCM_MAX_NONCE_HEX: &'static [u8] = b"1000000000000000000000000";
 static ALGORITHM: &'static Algorithm = &aead::AES_128_GCM;
 lazy_static! {
@@ -168,7 +168,7 @@ mod test {
     fn raw_roundtrip() {
         use ring::aead;
         use ring::aead::{SealingKey, OpeningKey};
-        use ring::rand::SystemRandom;
+        use ring::rand::{SecureRandom, SystemRandom};
 
         let rng = SystemRandom::new();
         let mut key_bytes = vec![0u8; super::ALGORITHM.key_len()];
@@ -275,7 +275,7 @@ mod bench {
     fn bench_raw_seal(b: &mut test::Bencher) {
         use ring::aead;
         use ring::aead::SealingKey;
-        use ring::rand::SystemRandom;
+        use ring::rand::{SecureRandom, SystemRandom};
 
         let rng = SystemRandom::new();
         let mut key_bytes = vec![0u8; super::ALGORITHM.key_len()];
@@ -299,7 +299,7 @@ mod bench {
     fn bench_raw_open(b: &mut test::Bencher) {
         use ring::aead;
         use ring::aead::{SealingKey, OpeningKey};
-        use ring::rand::SystemRandom;
+        use ring::rand::{SecureRandom, SystemRandom};
 
         let rng = SystemRandom::new();
         let mut key_bytes = vec![0u8; super::ALGORITHM.key_len()];
