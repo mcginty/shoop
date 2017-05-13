@@ -264,8 +264,7 @@ impl Target {
     fn looks_like_file_path(&self) -> bool {
         let target = self.clone();
         let path = match target {
-            Target::Local(s) => s,
-            Target::Remote((_, s)) => s,
+            Target::Local(s) | Target::Remote((_, s)) => s,
         };
         Path::new(&path).file_name().is_some()
     }
@@ -273,8 +272,7 @@ impl Target {
     fn get_path(&self) -> PathBuf {
         let target = self.clone();
         let path = match target {
-            Target::Local(s) => s,
-            Target::Remote((_, s)) => s,
+            Target::Local(s) | Target::Remote((_, s)) => s,
         };
         PathBuf::from(&path)
     }
