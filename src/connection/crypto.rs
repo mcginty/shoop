@@ -36,7 +36,6 @@ impl Clone for Key {
     }
 }
 
-/// explicitly no-Clone to avoid nonce re-use
 pub struct Nonce {
     counter: BigUint,
 }
@@ -46,7 +45,7 @@ impl Nonce {
         Nonce { counter: BigUint::zero() }
     }
 
-    /// TEST ONLY
+    #[cfg(test)]
     pub fn starting_from(start: BigUint) -> Nonce {
         Nonce { counter: start }
     }
