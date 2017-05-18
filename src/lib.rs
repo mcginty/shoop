@@ -13,8 +13,8 @@ extern crate num_traits;
 extern crate udt;
 extern crate ring;
 extern crate time;
-extern crate rustc_serialize;
 extern crate colored;
+extern crate hex;
 
 // crates needed for unit tests
 #[cfg(test)]
@@ -29,6 +29,7 @@ use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
 use colored::*;
 use connection::{PortRange, Transceiver};
 use log::{LogRecord, LogLevel, LogMetadata};
+use hex::ToHex;
 use std::net::{SocketAddr, IpAddr};
 use std::fs::File;
 use std::io;
@@ -39,7 +40,6 @@ use std::str::FromStr;
 use std::sync::mpsc;
 use std::time::{Instant, Duration};
 use progress::Progress;
-use rustc_serialize::hex::ToHex;
 use unix_daemonize::{daemonize_redirect, ChdirMode};
 use file::ReadMsg;
 

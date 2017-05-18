@@ -1,5 +1,3 @@
-extern crate rustc_serialize;
-
 use connection::PortRange;
 use std::collections::HashMap;
 use std::io;
@@ -7,7 +5,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::process::{Command, Output};
 use std::str::FromStr;
-use rustc_serialize::hex::FromHex;
+use hex::FromHex;
 
 lazy_static! {
     static ref SECURE_OPTS_MAP: HashMap<&'static str, &'static str> = {
@@ -166,8 +164,7 @@ impl Connection {
                                   "unsupported protocol version"));
         }
 
-        let mut keybytes = Vec::with_capacity(32);
-        keybytes.extend_from_slice(&keyhex.from_hex().unwrap()[..]);
+        let keybytes = Vec::<u8>::from_hex(keyhex).unwrap();
         let addr: SocketAddr = try!(SocketAddr::from_str(&format!("{}:{}", ip, port)[..])
             .map_err(|_| {
                 Error::new(ErrorType::BadServerResponse,
