@@ -3,6 +3,7 @@
 extern crate log;
 #[macro_use]
 extern crate lazy_static;
+extern crate chrono;
 extern crate core;
 extern crate libc;
 extern crate pbr;
@@ -10,7 +11,6 @@ extern crate unix_daemonize;
 extern crate byteorder;
 extern crate udt;
 extern crate ring;
-extern crate time;
 extern crate colored;
 extern crate hex;
 
@@ -36,6 +36,7 @@ use std::path::{Path, PathBuf};
 use std::{str, env, thread, fmt};
 use std::str::FromStr;
 use std::sync::mpsc;
+use chrono::UTC;
 use std::time::{Instant, Duration};
 use progress::Progress;
 use unix_daemonize::{daemonize_redirect, ChdirMode};
@@ -188,7 +189,7 @@ impl log::Log for ShoopLogger {
 
             let pidinfo = match self.mode {
                 ShoopMode::Server => format!("{} ({}) ",
-                                             time::now().ctime(),
+                                             UTC::now().to_rfc2822(),
                                              self.pid),
                 ShoopMode::Client => String::new(),
             };
