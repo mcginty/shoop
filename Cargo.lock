@@ -1,6 +1,6 @@
 [root]
 name = "shoop"
-version = "0.0.6-alpha"
+version = "0.0.7-alpha"
 dependencies = [
  "byteorder 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.23.1 (registry+https://github.com/rust-lang/crates.io-index)",
