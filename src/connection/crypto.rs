@@ -153,9 +153,7 @@ mod test {
 
     #[test]
     fn nonce_overflow() {
-        use num_bigint::BigUint;
-        use num_traits::One;
-        let mut nonce = super::Nonce::starting_from(&super::MAX_NONCE.clone() - &BigUint::one());
+        let mut nonce = super::Nonce::starting_from(super::MAX_NONCE - 1);
         if let Err(_) = nonce.next() {
             panic!("2^96 - 1 should be a valid nonce");
         }
