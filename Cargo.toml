@@ -27,7 +27,7 @@ name = "shoop"
 path = "src/main.rs"
 
 [build-dependencies]
-rustc_version = "*"
+rustc_version = "^0.2"
 
 [dependencies]
 log = "^0.3"
