@@ -1,17 +1,16 @@
 extern crate ring;
-extern crate num_bigint;
-extern crate num_traits;
 
-use num_traits::{Zero, One};
-use num_bigint::BigUint;
+use byteorder::{WriteBytesExt, LittleEndian};
 use ring::aead;
 use ring::aead::{SealingKey, OpeningKey, Algorithm};
 use ring::rand::{SecureRandom, SystemRandom};
-static AES_GCM_MAX_NONCE_HEX: &'static [u8] = b"1000000000000000000000000";
+
+const MAX_NONCE: u64 = ::std::u64::MAX;
+
 static ALGORITHM: &'static Algorithm = &aead::AES_128_GCM;
+
 lazy_static! {
     static ref RAND: SystemRandom = SystemRandom::new();
-    static ref MAX_NONCE: BigUint = BigUint::parse_bytes(AES_GCM_MAX_NONCE_HEX, 16).unwrap();
 }
 
 pub struct Key {
@@ -37,25 +36,27 @@ impl Clone for Key {
 }
 
 pub struct Nonce {
-    counter: BigUint,
+    counter: u64,
 }
 
 impl Nonce {
     pub fn new() -> Nonce {
-        Nonce { counter: BigUint::zero() }
+        Nonce { counter: 0 }
     }
 
     #[cfg(test)]
-    pub fn starting_from(start: BigUint) -> Nonce {
+    pub fn starting_from(start: u64) -> Nonce {
         Nonce { counter: start }
     }
 
     pub fn next(&mut self) -> Result<Vec<u8>, ()> {
-        if &self.counter >= &MAX_NONCE {
+        if self.counter >= MAX_NONCE {
             Err(())
         } else {
-            let nonce_bytes = self.counter.to_bytes_le();
-            self.counter = &self.counter + BigUint::one();
+            let mut nonce_bytes = Vec::with_capacity(12);
+            nonce_bytes.write_u64::<LittleEndian>(self.counter).map_err(|_| ())?;
+            nonce_bytes.extend_from_slice(&[0u8; 4]);
+            self.counter += 1;
 
             Ok(nonce_bytes)
         }

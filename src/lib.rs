@@ -8,8 +8,6 @@ extern crate libc;
 extern crate pbr;
 extern crate unix_daemonize;
 extern crate byteorder;
-extern crate num_bigint;
-extern crate num_traits;
 extern crate udt;
 extern crate ring;
 extern crate time;
