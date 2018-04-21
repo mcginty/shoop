@@ -99,7 +99,7 @@ impl Handler {
         assert!(len <= buf.len() - max_suffix_len,
                 "Buffer doesn't have enough suffix padding.");
 
-        let mut nonce = &mut self._working_nonce_buf[..nonce_len];
+        let nonce = &mut self._working_nonce_buf[..nonce_len];
         let nonce_bytes = self.nonce.next().unwrap();
         nonce[..nonce_bytes.len()].copy_from_slice(&nonce_bytes);
 

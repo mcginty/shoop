@@ -26,7 +26,7 @@ pub mod progress;
 use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
 use colored::*;
 use connection::{PortRange, Transceiver};
-use log::{LogRecord, LogLevel, LogMetadata};
+use log::{Record, Level, Metadata};
 use hex::ToHex;
 use std::net::{SocketAddr, IpAddr};
 use std::fs::File;
@@ -48,7 +48,7 @@ const RECONNECT_ACCEPT_TIMEOUT_SECONDS: u64 = 21600;
 
 macro_rules! overprint {
     ($fmt: expr) => {
-        if log_enabled!(LogLevel::Debug) {
+        if log_enabled!(Level::Debug) {
             // println!($fmt);
         } else {
             print!(concat!("\x1b[2K\r", $fmt));
@@ -56,7 +56,7 @@ macro_rules! overprint {
         }
     };
     ($fmt:expr, $($arg:tt)*) => {
-        if log_enabled!(LogLevel::Debug) {
+        if log_enabled!(Level::Debug) {
             // println!($fmt, $($arg)*);
         } else {
             print!(concat!("\x1b[2K\r", $fmt), $($arg)*);
@@ -115,13 +115,13 @@ pub enum LogVerbosity {
 }
 
 impl LogVerbosity {
-    fn to_log_level(self, mode: ShoopMode) -> LogLevel {
+    fn to_log_level(self, mode: ShoopMode) -> Level {
         match self {
-            LogVerbosity::Debug => LogLevel::Debug,
+            LogVerbosity::Debug => Level::Debug,
             LogVerbosity::Normal => {
                 match mode {
-                    ShoopMode::Server => LogLevel::Info,
-                    ShoopMode::Client => LogLevel::Error,
+                    ShoopMode::Server => Level::Info,
+                    ShoopMode::Client => Level::Error,
                 }
             }
         }
@@ -169,22 +169,22 @@ struct Error {
 pub struct ShoopLogger {
     pid: i32,
     mode: ShoopMode,
-    log_level: LogLevel,
+    log_level: Level,
 }
 
 impl log::Log for ShoopLogger {
-    fn enabled(&self, metadata: &LogMetadata) -> bool {
+    fn enabled(&self, metadata: &Metadata) -> bool {
         metadata.level() <= self.log_level
     }
 
-    fn log(&self, record: &LogRecord) {
+    fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
             let prefix_symbol = match record.level() {
-                LogLevel::Error => "E".red().bold(),
-                LogLevel::Warn => "W".yellow().bold(),
-                LogLevel::Info => "I".normal(),
-                LogLevel::Debug => "D".dimmed(),
-                LogLevel::Trace => "T".dimmed(),
+                Level::Error => "E".red().bold(),
+                Level::Warn => "W".yellow().bold(),
+                Level::Info => "I".normal(),
+                Level::Debug => "D".dimmed(),
+                Level::Trace => "T".dimmed(),
             };
 
             let pidinfo = match self.mode {
@@ -197,20 +197,17 @@ impl log::Log for ShoopLogger {
             println!("{}[{}] {}", pidinfo, prefix_symbol, record.args());
         }
     }
+
+    fn flush(&self) {}
 }
 
 impl ShoopLogger {
     pub fn init(mode: ShoopMode, verbosity: LogVerbosity) -> Result<(), log::SetLoggerError> {
-        let log_level = verbosity.to_log_level(mode);
-
-        log::set_logger(|max_log_level| {
-            max_log_level.set(log_level.to_log_level_filter());
-            Box::new(ShoopLogger {
-                pid: unsafe { libc::getpid() },
-                mode: mode,
-                log_level: log_level,
-            })
-        })
+        log::set_boxed_logger(Box::new(ShoopLogger {
+            pid: unsafe { libc::getpid() },
+            mode,
+            log_level: verbosity.to_log_level(mode),
+        }))
     }
 }
 
@@ -378,7 +375,7 @@ impl Server {
             });
 
             info!("waiting for connection...");
-            let mut client = &mut match self.conn.accept() {
+            let client = &mut match self.conn.accept() {
                 Ok(client) => client,
                 Err(e) => {
                     die!("unexpected error on sock accept() {:?}", e);

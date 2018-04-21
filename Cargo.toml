@@ -1,6 +1,6 @@
 [package]
 name = "shoop"
-version = "0.0.9-alpha"
+version = "0.1.0-alpha"
 authors = ["Jake McGinty <me@jake.su>"]
 description = "Shoop is a high-speed encrypted file transfer tool reminiscent of scp. It uses SSH to bootstrap authentication and encryption, then uses UDT (a reliable protocol from the 2000s) instead of TCP (a reliable protocol from the 1970s)."
 keywords = ["scp", "transfer", "encrypted", "secure", "file"]
@@ -30,13 +30,13 @@ path = "src/main.rs"
 rustc_version = "^0.2"
 
 [dependencies]
-log = "^0.3"
+log = "^0.4"
 clap = "^2"
 unix-daemonize = "^0.1"
-byteorder = "^1"
+byteorder = "^1.2"
 hex = "^0.2"
 lazy_static = "^0.2"
-ring = "^0.9.4"
+ring = "0.13.0-alpha"
 chrono = "0.3"
 udt = "^0.2"
 colored = "^1.4"

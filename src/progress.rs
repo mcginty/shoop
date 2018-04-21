@@ -23,7 +23,7 @@ pub enum Msg {
 fn new_pb(size: u64) -> ProgressBar<Stdout> {
     let mut pb = ProgressBar::new(size);
     pb.set_units(Units::Bytes);
-    pb.format(" =💃 ⛩");
+    pb.format("⸨▱▱ ⸩");
     pb.tick_format("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏");
     pb
 }
@@ -58,7 +58,7 @@ impl Progress {
                         frame_total += size;
                     }
                     Ok(Msg::Finish(msg)) => {
-                        do_maybe(&mut pb, |pb| pb.finish_print(&msg));
+                        do_maybe(&mut pb, |pb| pb.finish_println(&msg));
                         break;
                     }
                     Err(TryRecvError::Empty) => {
