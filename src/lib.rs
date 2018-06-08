@@ -36,7 +36,7 @@ use std::path::{Path, PathBuf};
 use std::{str, env, thread, fmt};
 use std::str::FromStr;
 use std::sync::mpsc;
-use chrono::UTC;
+use chrono::Utc;
 use std::time::{Instant, Duration};
 use progress::Progress;
 use unix_daemonize::{daemonize_redirect, ChdirMode};
@@ -189,7 +189,7 @@ impl log::Log for ShoopLogger {
 
             let pidinfo = match self.mode {
                 ShoopMode::Server => format!("{} ({}) ",
-                                             UTC::now().to_rfc2822(),
+                                             Utc::now().to_rfc2822(),
                                              self.pid),
                 ShoopMode::Client => String::new(),
             };
