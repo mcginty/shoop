@@ -279,11 +279,11 @@ impl fmt::Display for TransferState {
         let target = self.clone();
         let pretty = match target {
             TransferState::Send(l, (rh, rp)) => {
-                format!("Local({}) -> Remote({}:{})",
+                format!("Send(Local({}) -> Remote({}:{}))",
                 l.display(), rh, rp.display())
             }
             TransferState::Receive((rh, rp), l) => {
-                format!("Remote({}:{}) -> Local({})",
+                format!("Receive(Remote({}:{}) -> Local({}))",
                 rh, rp.display(), l.display())
             }
         };

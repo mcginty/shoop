@@ -31,17 +31,17 @@ rustc_version = "^0.2"
 
 [dependencies]
 log = "^0.4"
-clap = "^2"
+clap = "^2.0"
 unix-daemonize = "^0.1"
 byteorder = "^1.2"
 hex = "^0.2"
 lazy_static = "^1.0"
-ring = "0.13.0-alpha4"
+ring = "^0.13"
 chrono = "^0.4"
 udt = "^0.2"
 colored = "^1.6"
 libc = "^0.2"
-pbr = "^1.0.0"
+pbr = "^1.0"
 
 [dev-dependencies]
 rand = "^0.5"

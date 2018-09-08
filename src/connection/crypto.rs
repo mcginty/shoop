@@ -35,15 +35,12 @@ impl Clone for Key {
     }
 }
 
+#[derive(Default)]
 pub struct Nonce {
     counter: u64,
 }
 
 impl Nonce {
-    pub fn new() -> Nonce {
-        Nonce { counter: 0 }
-    }
-
     #[cfg(test)]
     pub fn starting_from(start: u64) -> Nonce {
         Nonce { counter: start }
@@ -85,7 +82,7 @@ impl Handler {
             _working_seal_buf: vec![0u8; super::MAX_MESSAGE_SIZE],
             _working_nonce_buf: [0u8; 32],
             key: Key::new(key),
-            nonce: Nonce::new(),
+            nonce: Nonce::default(),
         }
     }
 
@@ -93,7 +90,7 @@ impl Handler {
         let nonce_len = ALGORITHM.nonce_len();
         let max_suffix_len = ALGORITHM.tag_len();
 
-        assert!(nonce_len < u8::max_value() as usize,
+        debug_assert!(nonce_len < u8::max_value() as usize,
                 "Uh, why is the nonce size this big?");
 
         assert!(len <= buf.len() - max_suffix_len,
@@ -145,7 +142,7 @@ mod test {
 
     #[test]
     fn nonce_sanity() {
-        let mut nonce = super::Nonce::new();
+        let mut nonce = super::Nonce::default();
         let first = nonce.next().unwrap();
         let second = nonce.next().unwrap();
         assert!(first != second, "two nonces were the same! death! shame!");
