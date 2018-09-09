@@ -167,7 +167,7 @@ struct Error {
 }
 
 pub struct ShoopLogger {
-    pid: i32,
+    pid: u32,
     mode: ShoopMode,
     log_level: Level,
 }
@@ -204,7 +204,7 @@ impl log::Log for ShoopLogger {
 impl ShoopLogger {
     pub fn init(mode: ShoopMode, verbosity: LogVerbosity) -> Result<(), log::SetLoggerError> {
         log::set_boxed_logger(Box::new(ShoopLogger {
-            pid: unsafe { libc::getpid() },
+            pid: std::process::id(),
             mode,
             log_level: verbosity.to_log_level(mode),
         }))
