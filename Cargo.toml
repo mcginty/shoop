@@ -31,7 +31,7 @@ rustc_version = "^0.2"
 
 [dependencies]
 log = "^0.4"
-clap = "^2.0"
+structopt = "*"
 unix-daemonize = "^0.1"
 byteorder = "^1.2"
 hex = "^0.2"
