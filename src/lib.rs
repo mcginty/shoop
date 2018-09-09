@@ -331,7 +331,7 @@ impl Server {
                 let keybytes = connection::crypto::gen_key();
                 let port = connection::Server::get_open_port(&port_range).unwrap();
                 println!("shoop 0 {} {} {}", ip, port, keybytes.to_hex());
-                Server::daemonize();
+                Self::daemonize();
                 info!("got request: serve \"{}\" on range {}", filename, port_range);
                 info!("sent response: shoop 0 {} {} <key redacted>", ip, port);
                 let conn = connection::Server::new(IpAddr::from_str(&ip).unwrap(), port, &keybytes);
@@ -343,7 +343,7 @@ impl Server {
             }
             Some(e) => {
                 println!("shooperr {}", e);
-                Server::daemonize();
+                Self::daemonize();
                 info!("got request: serve \"{}\" on range {}", filename, port_range);
                 error!("init error: {}", e);
                 Err(e)
@@ -405,21 +405,6 @@ impl Server {
                 }
                 TransferMode::Receive => {
                     die!("receive not supported yet");
-                    // match recv_file(&self.conn, filesize.unwrap(), &local_path, offset) {
-                    //     Ok(_) => {
-                    //         info!("done sending file");
-                    //         let _ = client.close();
-                    //         break;
-                    //     }
-                    //     Err(Error { kind: ErrorKind::Severed, msg, finished }) => {
-                    //         info!("connection severed, msg: {:?}, finished: {}", msg, finished);
-                    //         let _ = client.close();
-                    //         continue;
-                    //     }
-                    //     Err(Error { kind: ErrorKind::Fatal, msg, finished }) => {
-                    //         die!("connection fatal, msg: {:?}, finished: {}", msg, finished);
-                    //     }
-                    // }
                 }
             }
         }
@@ -574,11 +559,10 @@ impl Client {
         overprint!(" - establishing SSH session...");
 
         let response = ssh.connect().unwrap_or_else(|e| {
-            error!("ssh error: {}", e.msg);
-            std::process::exit(1);
+            die!("ssh error: {}", e.msg);
         });
 
-        debug!("👈  init(version: {}, addr: {})",
+        debug!("init(version: {}, addr: {})",
                response.version, response.addr);
 
         let start_ts = Instant::now();
@@ -609,28 +593,20 @@ impl Client {
 
     fn confirm_overwrite() -> Result<(),()> {
         loop {
-            print!("\n{}[y/n] ",
-                   "file exists. overwrite? ".yellow().bold());
+            print!("\n{} [y/n] ",
+                   "file exists. overwrite?".yellow().bold());
             io::stdout().flush().expect("stdout flush fail");
             let mut input = String::new();
             io::stdin().read_line(&mut input).expect("stdio fail");
             let normalized = input.trim().to_lowercase();
-            if normalized == "y" ||
-               normalized == "yes" ||
-               normalized == "yeah" ||
-               normalized == "heck yes" {
-                break;
-            } else if normalized == "whatever" ||
-                      normalized == "w/e" {
-                println!("{}", "close enough.".green().bold());
-                break;
-            } else if normalized == "n" ||
-                      normalized == "no" ||
-                      normalized == "nah" ||
-                      normalized == "heck naw" {
-                return Err(())
-            } else {
-                println!("answer 'y' or 'n'.")
+            match normalized.as_ref() {
+                "y" | "yes" | "yeah" | "heck yes" => break,
+                "n" | "no" | "nah" | "heck naw" => return Err(()),
+                "whatever" | "w/e" => {
+                    println!("{}", "close enough.".green().bold());
+                    break;
+                },
+                _ => println!("answer 'y' or 'n'.")
             }
         }
         Ok(())

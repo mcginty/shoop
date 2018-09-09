@@ -10,22 +10,22 @@ use shoop::connection::PortRange;
 #[derive(StructOpt, Debug)]
 #[structopt(name = "shoop")]
 struct Opt {
-    #[structopt(short = "d", long = "debug")]
+    #[structopt(short = "d", long = "debug", help = "Extra debugging output")]
     debug: bool,
 
-    #[structopt(short = "f", long = "force")]
+    #[structopt(short = "f", long = "force", help = "Force overwrite of file")]
     force: bool,
 
-    #[structopt(short = "s", long = "server")]
+    #[structopt(short = "s", long = "server", help = "Server mode")]
     server: bool,
 
     #[structopt(short = "p", long = "port-range", default_value = "55000-55050")]
     port_range: String,
 
-    #[structopt(name = "SOURCE")]
+    #[structopt(name = "SOURCE", help = "The source target, ex. \"my.server.com:~/file.bin\"")]
     source: String,
 
-    #[structopt(name = "DEST", default_value = ".")]
+    #[structopt(name = "DEST", default_value = ".", help = "The optional destination (either a folder or file)")]
     dest: String,
 }
 
