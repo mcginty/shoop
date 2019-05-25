@@ -54,9 +54,8 @@ fn send(sock: &UdtSocket, crypto: &mut crypto::Handler, buf: &mut [u8], len: usi
 
         let mut wtr = vec![];
         wtr.write_u32::<LittleEndian>(sealed_len as u32).unwrap();
-        try!(sock.send_exact(&wtr));
-
-        sock.send_exact(&buf[..sealed_len])
+        wtr.extend_from_slice(&buf[..sealed_len]);
+        sock.send_exact(&wtr)
     } else {
         Err(UdtError {
             err_code: -1,
