@@ -103,8 +103,8 @@ impl Handler {
         let mut sealed = &mut self._working_seal_buf[..len + max_suffix_len];
         sealed[0..len].copy_from_slice(&buf[..len]);
         match aead::seal_in_place(&self.key.sealing,
-                                  &nonce,
-                                  &[],
+                                  aead::Nonce::try_assume_unique_for_key(nonce).unwrap(),
+                                  aead::Aad::empty(),
                                   &mut sealed,
                                   max_suffix_len) {
             Ok(seal_len) => {
@@ -130,7 +130,7 @@ impl Handler {
         let nonce = &mut self._working_nonce_buf[..nonce_len];
         nonce.copy_from_slice(&buf[..nonce_len]);
 
-        aead::open_in_place(&self.key.opening, &nonce, &[], nonce_len, buf)
+        aead::open_in_place(&self.key.opening, aead::Nonce::try_assume_unique_for_key(nonce).unwrap(), aead::Aad::empty(), nonce_len, buf)
             .map(|buf| buf.len())
             .map_err(|_| String::from("decrypt failed"))
     }
@@ -175,11 +175,11 @@ mod test {
         let data = [1u8; 1350];
         let out_suffix_capacity = super::ALGORITHM.tag_len();
         let mut in_out = vec![1u8; data.len() + out_suffix_capacity];
-        aead::seal_in_place(&key, &nonce_bytes, &[],
+        aead::seal_in_place(&key, aead::Nonce::try_assume_unique_for_key(&nonce_bytes).unwrap(), aead::Aad::empty(),
                             &mut in_out, out_suffix_capacity).unwrap();
 
         let opening_key = OpeningKey::new(super::ALGORITHM, &key_bytes).unwrap();
-        let buf = aead::open_in_place(&opening_key, &nonce_bytes, &[],
+        let buf = aead::open_in_place(&opening_key, aead::Nonce::try_assume_unique_for_key(&nonce_bytes).unwrap(), aead::Aad::empty(),
                                       0, &mut in_out).unwrap();
 
         assert_eq!(buf.len(), 1350);
@@ -188,15 +188,14 @@ mod test {
 
     #[test]
     fn roundtrip() {
-        use ::rand;
-        use ::rand::distributions::{IndependentSample, Range};
+        use ::rand::{self, Rng};
+        use ::rand::distributions::{Distribution, Uniform};
         // generate some data, seal it, and then make sure it unseals to the same thing
         let mut rng = rand::thread_rng();
-        let between = Range::new(10, 10000);
 
         let key = super::gen_key();
         let mut handler = super::Handler::new(&key);
-        let data_size: usize = between.ind_sample(&mut rng);
+        let data_size: usize = rng.gen_range(10, 10000);
         let mut data = vec![0u8; super::super::MAX_MESSAGE_SIZE];
         for i in 0..data_size {
             data[i] = rand::random();
@@ -259,7 +258,7 @@ mod bench {
 
     #[bench]
     fn bench_nonce_output(b: &mut test::Bencher) {
-        let mut nonce = super::Nonce::new();
+        let mut nonce = super::Nonce { counter: 0 };
         b.bytes = 12; // kind of
         b.iter(|| {
             nonce.next()
@@ -285,7 +284,7 @@ mod bench {
         b.bytes = DATA_SIZE as u64;
         b.iter(|| {
             rng.fill(&mut nonce_bytes).unwrap();
-            aead::seal_in_place(&key, &nonce_bytes, &[], &mut in_out,
+            aead::seal_in_place(&key, aead::Nonce::try_assume_unique_for_key(&nonce_bytes).unwrap(), aead::Aad::empty(), &mut in_out,
                                 out_suffix_capacity).unwrap()
         })
     }
@@ -310,9 +309,9 @@ mod bench {
 
         b.bytes = DATA_SIZE as u64;
 
-        let sealed_len = aead::seal_in_place(&key, &nonce_bytes, &[], &mut in_out,
+        let sealed_len = aead::seal_in_place(&key, aead::Nonce::try_assume_unique_for_key(&nonce_bytes).unwrap(), aead::Aad::empty(), &mut in_out,
                                              out_suffix_capacity).unwrap();
-        b.iter(|| { aead::open_in_place(&opening_key, &nonce_bytes, &[],
+        b.iter(|| { aead::open_in_place(&opening_key, aead::Nonce::try_assume_unique_for_key(&nonce_bytes).unwrap(), aead::Aad::empty(),
                                         0, &mut in_out[..sealed_len]).unwrap(); });
     }
 

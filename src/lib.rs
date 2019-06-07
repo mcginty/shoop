@@ -27,7 +27,6 @@ use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
 use colored::*;
 use connection::{PortRange, Transceiver};
 use log::{Record, Level, Metadata};
-use hex::ToHex;
 use std::net::{SocketAddr, IpAddr};
 use std::fs::File;
 use std::io;
@@ -330,7 +329,7 @@ impl Server {
                 let ip = sshconn[2].to_owned();
                 let keybytes = connection::crypto::gen_key();
                 let port = connection::Server::get_open_port(&port_range).unwrap();
-                println!("shoop 0 {} {} {}", ip, port, keybytes.to_hex());
+                println!("shoop 0 {} {} {}", ip, port, hex::encode(&keybytes));
                 Self::daemonize();
                 info!("got request: serve \"{}\" on range {}", filename, port_range);
                 info!("sent response: shoop 0 {} {} <key redacted>", ip, port);
