@@ -22,6 +22,9 @@ struct Opt {
     #[structopt(short = "p", long = "port-range", default_value = "55000-55050")]
     port_range: String,
 
+    #[structopt(short = "P", long = "ssh-port", default_value = "22")]
+    ssh_port: String,
+    
     #[structopt(name = "SOURCE", help = "The source target, ex. \"my.server.com:~/file.bin\"")]
     source: String,
 
@@ -44,6 +47,8 @@ fn main() {
 
     let port_range = PortRange::from(&opt.port_range).unwrap();
 
+    let ssh_port   = opt.ssh_port;
+
     ShoopLogger::init(mode, verbosity).expect("Error starting shoop logger.");
 
     match mode {
@@ -58,8 +63,8 @@ fn main() {
         ShoopMode::Client => {
             let source = Target::from(opt.source.clone());
             let dest = Target::from(opt.dest.clone());
-
-            match Client::new(source, dest, port_range) {
+            
+            match Client::new(source, dest, port_range, ssh_port) {
                 Ok(mut client) => client.start(opt.force),
                 Err(e) => error!("{}", e),
             }

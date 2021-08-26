@@ -25,7 +25,7 @@ pub mod progress;
 
 use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
 use colored::*;
-use connection::{PortRange, Transceiver};
+use connection::{PortRange, SSHPort, Transceiver};
 use log::{Record, Level, Metadata};
 use std::net::{SocketAddr, IpAddr};
 use std::fs::File;
@@ -99,6 +99,7 @@ enum TransferState {
 pub struct Client {
     port_range: PortRange,
     transfer_state: TransferState,
+    ssh_port: SSHPort
 }
 
 #[derive(Clone, Copy)]
@@ -488,7 +489,7 @@ impl Server {
 
 impl Client {
 
-    pub fn new(source: Target, dest: Target, port_range: PortRange)
+    pub fn new(source: Target, dest: Target, port_range: PortRange, ssh_port: SSHPort)
             -> Result<Client, String> {
         if source.is_local() && dest.is_local() ||
             source.is_remote() && dest.is_remote() {
@@ -541,7 +542,8 @@ impl Client {
 
         Ok(Client {
             port_range: port_range,
-            transfer_state: state
+            transfer_state: state,
+            ssh_port: ssh_port
         })
     }
 
@@ -551,7 +553,7 @@ impl Client {
                 panic!("sending unsupported");
             }
             TransferState::Receive((host, path), _) => {
-                ssh::Connection::new(host, path, &self.port_range)
+                ssh::Connection::new(host, path, &self.port_range, &self.ssh_port)
             }
         };
 
@@ -627,7 +629,7 @@ impl Client {
 
         loop {
             overprint!(" - opening UDT connection...");
-            let mut conn = connection::Client::new(addr, &keybytes);
+            let mut conn = connection::Client::new(addr, &keybytes, &self.ssh_port);
             match conn.connect() {
                 Ok(()) => {
                     overprint!(" - connection opened, shakin' hands, makin' frands");

@@ -93,10 +93,13 @@ pub struct Server {
     sock: UdtSocket,
 }
 
+pub type SSHPort = String;
+
 pub struct Client {
     addr: SocketAddr,
     sock: UdtSocket,
     crypto: crypto::Handler,
+    ssh_port: SSHPort
 }
 
 pub struct ServerConnection {
@@ -105,12 +108,13 @@ pub struct ServerConnection {
 }
 
 impl Client {
-    pub fn new(addr: SocketAddr, key: &[u8]) -> Client {
+    pub fn new(addr: SocketAddr, key: &[u8], ssh_port: &str) -> Client {
         let sock = new_udt_socket();
         Client {
             addr: addr,
             sock: sock,
             crypto: crypto::Handler::new(key),
+            ssh_port: ssh_port.to_owned()
         }
     }
 
