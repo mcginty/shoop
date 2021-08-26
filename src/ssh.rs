@@ -1,4 +1,4 @@
-use connection::PortRange;
+use connection::{PortRange, SSHPort};
 use std::collections::HashMap;
 use std::io;
 use std::net::SocketAddr;
@@ -33,6 +33,7 @@ pub struct Connection {
     hostname: String,
     path: PathBuf,
     port_range: PortRange,
+    ssh_port: SSHPort
 }
 
 pub struct Response {
@@ -70,11 +71,12 @@ impl From<io::Error> for Error {
 }
 
 impl Connection {
-    pub fn new<S: Into<String>>(hostname: S, path: PathBuf, port_range: &PortRange) -> Connection {
+    pub fn new<S: Into<String>>(hostname: S, path: PathBuf, port_range: &PortRange, ssh_port: &SSHPort) -> Connection {
         Connection {
             hostname: hostname.into(),
             path: path,
             port_range: port_range.to_owned(),
+            ssh_port: ssh_port.to_owned()
         }
     }
 
@@ -94,7 +96,10 @@ impl Connection {
                           self.path.to_string_lossy(),
                           self.port_range);
         debug!("👉  ssh {} {}", &self.hostname, cmd);
+
         let mut command = Command::new("ssh");
+        command.arg(format!("-p {}", &self.ssh_port));
+        
         for arg in extra_args {
             command.arg(&arg);
         }
@@ -103,7 +108,8 @@ impl Connection {
                .output());
 
         if !output.status.success() {
-            Err(Error::new(ErrorType::SshError, "ssh returned failure exit code"))
+            let err = String::from_utf8_lossy(&output.stderr);
+            Err(Error::new(ErrorType::SshError, format!("ssh returned failure exit code: {:?}", err)))
         } else {
             Ok(output)
         }
